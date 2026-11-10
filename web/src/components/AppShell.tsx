@@ -54,8 +54,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 const LINKS = [
   { href: "/needs", label: "Browse needs" },
+  { href: "/flights", label: "People flying" },
   { href: "/needs/new", label: "Post a need" },
-  { href: "/my-needs", label: "My needs" },
+  { href: "/flights/new", label: "I'm flying" },
+  { href: "/my-needs", label: "My posts" },
   { href: "/messages", label: "Messages" },
   { href: "/profile", label: "Profile" },
 ];

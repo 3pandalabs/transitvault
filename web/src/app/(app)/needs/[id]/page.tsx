@@ -1,23 +1,28 @@
 "use client";
 
-import { ArrowLeft, CheckCircle2, Languages, MessageCircle, Pencil, RotateCcw, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, HandHeart, Languages, MessageCircle, Pencil, RotateCcw, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChipsInput, ErrorText, Field, LoadError, Loading, NeedStatusBadge, PageHeader, Panel, PanelTitle } from "@/components/common";
+import { Checklist } from "@/components/Checklist";
+import { ContactFlight } from "@/components/ContactFlight";
+import { LegsList, HiddenNotice, PersonLine, ThanksBadge, travelerLine } from "@/components/needs";
 import { normFlight } from "@/components/LegsEditor";
-import { LegsList, travelerLine } from "@/components/needs";
+import { BlockButton, ReportButton } from "@/components/Safety";
+import { ShareNeed } from "@/components/ShareNeed";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { errorMessage, getNeed, listConversations, reachOut, updateNeed } from "@/lib/api";
+import { errorMessage, getNeed, getNeedMatches, listConversations, reachOut, updateNeed } from "@/lib/api";
 import { date, dateTime, route } from "@/lib/format";
-import { useAction, useAsync } from "@/lib/hooks";
-import type { Need, NeedStatus } from "@/lib/types";
+import { useAction, useAsync, useQueryParam } from "@/lib/hooks";
+import type { FlightMatch, Need, NeedStatus } from "@/lib/types";
 
 export default function NeedDetail() {
   const { id } = useParams<{ id: string }>();
   const need = useAsync(() => getNeed(id), `need:${id}`);
+  const justPosted = useQueryParam("posted") === "1";
 
   if (need.error) return <LoadError error={need.error} onRetry={need.reload} />;
   if (!need.data) return <Loading />;
@@ -26,8 +31,10 @@ export default function NeedDetail() {
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <Link href={n.mine ? "/my-needs" : "/needs"} className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
-        <ArrowLeft className="size-4" /> {n.mine ? "My needs" : "All needs"}
+        <ArrowLeft className="size-4" /> {n.mine ? "My posts" : "All needs"}
       </Link>
+      {n.mine && n.hidden ? <HiddenNotice /> : null}
+      {n.mine && justPosted && n.status === "open" && !n.hidden ? <ShareNeed need={n} justPosted /> : null}
       <PageHeader
         title={route(n.legs)}
         subtitle={`${date(n.travelDate)} · ${n.legs.length === 1 ? "Direct flight" : `Connecting via ${n.layovers.join(", ")}`}`}
@@ -62,15 +69,26 @@ export default function NeedDetail() {
             <p className="mt-1 whitespace-pre-wrap text-fg">{n.notes}</p>
           </div>
         ) : null}
-        <p className="mt-4 text-sm text-fg-muted">Posted by {n.postedBy.firstName}</p>
+        <p className="mt-4 text-sm text-fg-muted">
+          <PersonLine person={n.postedBy} prefix="Posted by " />
+        </p>
       </Panel>
 
-      {n.mine ? <OwnerPanel need={n} onChange={need.setData} /> : <ReachOutPanel need={n} />}
+      {n.mine ? <OwnerPanel need={n} onChange={need.setData} justPosted={justPosted} /> : <ReachOutPanel need={n} />}
+
+      {n.mine ? (
+        <Checklist />
+      ) : (
+        <div className="flex flex-wrap items-start gap-2">
+          <ReportButton targetType="need" targetId={n.id} label="Report this post" />
+          <BlockButton userId={n.postedBy.id} firstName={n.postedBy.firstName} />
+        </div>
+      )}
     </div>
   );
 }
 
-function OwnerPanel({ need, onChange }: { need: Need; onChange: (n: Need) => void }) {
+function OwnerPanel({ need, onChange, justPosted }: { need: Need; onChange: (n: Need) => void; justPosted: boolean }) {
   const act = useAction();
   const conversations = useAsync(listConversations, `convs:${need.id}`);
   const mine = conversations.data?.filter((c) => c.need.id === need.id) ?? [];
@@ -108,6 +126,10 @@ function OwnerPanel({ need, onChange }: { need: Need; onChange: (n: Need) => voi
         <ErrorText>{act.error}</ErrorText>
       </Panel>
 
+      {need.status === "open" && !need.hidden && !justPosted ? <ShareNeed need={need} /> : null}
+
+      {need.status === "open" && !need.hidden ? <FlightMatches need={need} /> : null}
+
       <Panel>
         <PanelTitle>People who reached out</PanelTitle>
         {conversations.error ? (
@@ -123,6 +145,9 @@ function OwnerPanel({ need, onChange }: { need: Need; onChange: (n: Need) => voi
                 <Link href={`/messages/${c.id}`} className="flex items-center justify-between gap-3 py-3 hover:text-accent">
                   <span className="min-w-0">
                     <span className="font-medium">{c.otherParty.firstName}</span>
+                    <span className="ml-2">
+                      <ThanksBadge count={c.otherParty.thanksCount} />
+                    </span>
                     {c.helperFlightNumbers.length ? (
                       <span className="ml-2 text-sm text-fg-muted">on {c.helperFlightNumbers.join(", ")}</span>
                     ) : null}
@@ -202,5 +227,62 @@ function ReachOutPanel({ need }: { need: Need }) {
         </Button>
       </form>
     </Panel>
+  );
+}
+
+/** "People on your flight": open "I'm flying" posts that match this need. */
+function FlightMatches({ need }: { need: Need }) {
+  const matches = useAsync(() => getNeedMatches(need.id), `need-matches:${need.id}`);
+  return (
+    <Panel>
+      <PanelTitle>People on your flight</PanelTitle>
+      {matches.error ? (
+        <LoadError error={matches.error} onRetry={matches.reload} />
+      ) : !matches.data ? (
+        <Loading />
+      ) : matches.data.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          Nobody who posted &ldquo;I&apos;m flying&rdquo; matches yet. We&apos;ll email you as soon as someone on your flight posts.
+        </p>
+      ) : (
+        <ul className="space-y-4">
+          {matches.data.map((f) => (
+            <FlightMatchRow key={f.id} flight={f} needId={need.id} />
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function FlightMatchRow({ flight, needId }: { flight: FlightMatch; needId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="rounded-xl border border-line p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="inline-flex items-center gap-1.5 font-medium">
+            <HandHeart className="size-4 text-accent" />
+            <PersonLine person={flight.postedBy} />
+          </p>
+          <p className="text-sm font-medium text-emerald-700">{flight.matchReason}</p>
+          <p className="text-sm text-fg-muted">
+            {route(flight.legs)} · {flight.flightNumbers.join(", ")}
+            {flight.languages.length ? ` · speaks ${flight.languages.join(", ")}` : ""}
+          </p>
+          {flight.note ? <p className="mt-1 text-sm">{flight.note}</p> : null}
+        </div>
+        {!open ? (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <MessageCircle /> Ask for help
+          </Button>
+        ) : null}
+      </div>
+      {open ? (
+        <div className="mt-3">
+          <ContactFlight flight={flight} needId={needId} />
+        </div>
+      ) : null}
+    </li>
   );
 }

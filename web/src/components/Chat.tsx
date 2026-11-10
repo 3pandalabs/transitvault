@@ -13,7 +13,7 @@ import { Textarea } from "./ui/input";
 const POLL_MS = 10_000;
 
 /** A conversation thread. Refetches every 10 s while open (no push in phase 1). */
-export function Chat({ conversationId, otherName }: { conversationId: string; otherName: string }) {
+export function Chat({ conversationId, otherName, disabledReason }: { conversationId: string; otherName: string; disabledReason?: string }) {
   const messages = useAsync(() => listMessages(conversationId), `msgs:${conversationId}`);
   const [body, setBody] = useState("");
   const send = useAction();
@@ -64,6 +64,9 @@ export function Chat({ conversationId, otherName }: { conversationId: string; ot
         )}
         <div ref={end} />
       </div>
+      {disabledReason ? (
+        <p className="mt-2 rounded-lg bg-bg-subtle p-3 text-sm text-fg-muted">{disabledReason}</p>
+      ) : (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -89,6 +92,7 @@ export function Chat({ conversationId, otherName }: { conversationId: string; ot
           <Send />
         </Button>
       </form>
+      )}
       <ErrorText>{send.error}</ErrorText>
     </div>
   );

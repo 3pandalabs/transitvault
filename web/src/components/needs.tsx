@@ -1,11 +1,50 @@
 "use client";
 
-import { CheckCircle2, Languages, MessageCircle, Plane } from "lucide-react";
+import { CheckCircle2, EyeOff, Heart, Languages, MessageCircle, Plane } from "lucide-react";
 import Link from "next/link";
 import { date, route, wallDateTime } from "@/lib/format";
-import type { Leg, NeedSummary } from "@/lib/types";
+import type { Leg, NeedSummary, PostedBy } from "@/lib/types";
 import { NeedStatusBadge } from "./common";
 import { Badge } from "./ui/badge";
+
+/** "Thanked by 3 families"; nothing when nobody has yet. */
+export function ThanksBadge({ count }: { count: number }) {
+  if (!count) return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-700">
+      <Heart className="size-3.5 fill-current" /> Thanked by {count} {count === 1 ? "family" : "families"}
+    </span>
+  );
+}
+
+/** "Anita · Thanked by 2 families" */
+export function PersonLine({ person, prefix }: { person: PostedBy; prefix?: string }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span>
+        {prefix}
+        {person.firstName}
+      </span>
+      <ThanksBadge count={person.thanksCount} />
+    </span>
+  );
+}
+
+/** The owner's notice for a post hidden after reports. */
+export function HiddenNotice() {
+  return (
+    <div className="flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+      <EyeOff className="size-4 shrink-0" />
+      <p>
+        This post was hidden after reports from other users. Only you can see it. If you think this is a mistake, write to{" "}
+        <a className="underline" href="mailto:support@3pandalabs.com">
+          support@3pandalabs.com
+        </a>
+        .
+      </p>
+    </div>
+  );
+}
 
 /** "My mother, 72" */
 export function travelerLine(n: Pick<NeedSummary, "travelerLabel" | "travelerAge">) {
@@ -55,6 +94,7 @@ export function NeedCard({ need, showStatus = false }: { need: NeedSummary; show
         </div>
         <div className="flex flex-wrap gap-1">
           {need.mine ? <Badge variant="default">Your post</Badge> : null}
+          {need.hidden ? <Badge variant="bad">Hidden</Badge> : null}
           {need.myConversationId ? (
             <Badge variant="good">
               <CheckCircle2 className="size-3.5" /> You responded
@@ -73,7 +113,9 @@ export function NeedCard({ need, showStatus = false }: { need: NeedSummary; show
             <Languages className="size-4" /> {need.languages.join(", ")}
           </span>
         ) : null}
-        <span className="text-fg-muted">Posted by {need.postedBy.firstName}</span>
+        <span className="text-fg-muted">
+          <PersonLine person={need.postedBy} prefix="Posted by " />
+        </span>
         {need.mine && need.responseCount ? (
           <span className="inline-flex items-center gap-1 font-medium text-accent">
             <MessageCircle className="size-4" /> {need.responseCount} {need.responseCount === 1 ? "person" : "people"} reached out

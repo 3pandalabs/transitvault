@@ -11,7 +11,7 @@ import { phoneSchema } from "./auth.js";
 // GET/PATCH /me (api/ROUTES.md "Me").
 
 export function userView(u: typeof users.$inferSelect) {
-  return { id: u.id, email: u.email, name: u.name, phone: u.phone, createdAt: u.createdAt };
+  return { id: u.id, email: u.email, name: u.name, phone: u.phone, alertsEnabled: u.alertsEnabled, createdAt: u.createdAt };
 }
 
 export const firstName = (name: string) => name.trim().split(/\s+/)[0];
@@ -28,7 +28,11 @@ export async function meRoutes(fastify: FastifyInstance) {
 
   app.patch(
     "/me",
-    { schema: { body: z.object({ name: z.string().trim().min(1).max(120).optional(), phone: phoneSchema.optional() }) } },
+    {
+      schema: {
+        body: z.object({ name: z.string().trim().min(1).max(120).optional(), phone: phoneSchema.optional(), alertsEnabled: z.boolean().optional() }),
+      },
+    },
     async (req) => {
       const [u] = await db.update(users).set(req.body).where(eq(users.id, req.userId!)).returning();
       if (!u) throw notFound();
