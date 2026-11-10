@@ -1,6 +1,6 @@
 "use client";
 
-import { Languages, MessageCircle, Plane } from "lucide-react";
+import { CheckCircle2, Languages, MessageCircle, Plane } from "lucide-react";
 import Link from "next/link";
 import { date, route, wallDateTime } from "@/lib/format";
 import type { Leg, NeedSummary } from "@/lib/types";
@@ -55,6 +55,11 @@ export function NeedCard({ need, showStatus = false }: { need: NeedSummary; show
         </div>
         <div className="flex flex-wrap gap-1">
           {need.mine ? <Badge variant="default">Your post</Badge> : null}
+          {need.myConversationId ? (
+            <Badge variant="good">
+              <CheckCircle2 className="size-3.5" /> You responded
+            </Badge>
+          ) : null}
           {showStatus || need.status !== "open" ? <NeedStatusBadge status={need.status} /> : null}
         </div>
       </div>

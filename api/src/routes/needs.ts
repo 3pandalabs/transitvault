@@ -51,7 +51,7 @@ export function routeColumns(legs: LegInput[]) {
   }
 }
 
-function summary(n: Need, poster: string, viewerId: string, responseCount = 0) {
+function summary(n: Need, poster: string, viewerId: string, responseCount = 0, myConversationId: string | null = null) {
   const mine = n.userId === viewerId;
   return {
     id: n.id,
@@ -68,8 +68,19 @@ function summary(n: Need, poster: string, viewerId: string, responseCount = 0) {
     postedBy: { firstName: firstName(poster) },
     mine,
     responseCount: mine ? responseCount : 0,
+    myConversationId: mine ? null : myConversationId,
     createdAt: n.createdAt,
   };
+}
+
+/** The viewer's conversation per need, for needs they reached out to (the board's "You responded" marker). */
+async function myConversations(needIds: string[], viewerId: string): Promise<Map<string, string>> {
+  if (!needIds.length) return new Map();
+  const rows = await db
+    .select({ needId: conversations.needId, id: conversations.id })
+    .from(conversations)
+    .where(and(inArray(conversations.needId, needIds), eq(conversations.helperId, viewerId)));
+  return new Map(rows.map((r) => [r.needId, r.id]));
 }
 
 async function responseCounts(needIds: string[]): Promise<Map<string, number>> {
@@ -93,18 +104,11 @@ export async function needDetail(id: string, viewerId: string) {
   if (!row || (row.need.status === "closed" && row.need.userId !== viewerId)) throw notFound();
   const mine = row.need.userId === viewerId;
   const counts = mine ? await responseCounts([id]) : new Map<string, number>();
-  const [conv] = mine
-    ? []
-    : await db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(and(eq(conversations.needId, id), eq(conversations.helperId, viewerId)))
-        .limit(1);
+  const convs = mine ? new Map<string, string>() : await myConversations([id], viewerId);
   return {
-    ...summary(row.need, row.poster, viewerId, counts.get(id) ?? 0),
+    ...summary(row.need, row.poster, viewerId, counts.get(id) ?? 0, convs.get(id) ?? null),
     assistance: row.need.assistance,
     notes: row.need.notes,
-    myConversationId: conv?.id ?? null,
   };
 }
 
@@ -122,8 +126,11 @@ export async function needRoutes(fastify: FastifyInstance) {
       .where(and(eq(needs.status, "open"), sql`${needs.travelDate} >= current_date - 1`))
       .orderBy(asc(needs.travelDate), asc(needs.createdAt))
       .limit(200);
-    const counts = await responseCounts(rows.filter((r) => r.need.userId === req.userId).map((r) => r.need.id));
-    return rows.map((r) => summary(r.need, r.poster, req.userId!, counts.get(r.need.id)));
+    const [counts, convs] = await Promise.all([
+      responseCounts(rows.filter((r) => r.need.userId === req.userId).map((r) => r.need.id)),
+      myConversations(rows.filter((r) => r.need.userId !== req.userId).map((r) => r.need.id), req.userId!),
+    ]);
+    return rows.map((r) => summary(r.need, r.poster, req.userId!, counts.get(r.need.id), convs.get(r.need.id) ?? null));
   });
 
   app.get("/needs/mine", async (req) => {
