@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Brand tokens copied from 3pandalabs/brand background/tokens.css (light
+   values). Light only, like BorrowVault: high contrast matters more here than a
+   dark mode, and the traveller card sets its own colours. */
+:root {
+  color-scheme: light;
+  --bg: #fafafa;
+  --bg-subtle: #f4f4f5;
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --border: #e4e4e7;
+  --accent: #1d4ed8;
+  --accent-fg: #ffffff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+

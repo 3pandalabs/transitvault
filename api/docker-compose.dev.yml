@@ -1,0 +1,38 @@
+# Local development. Port 5438 so it doesn't clash with the other apps' dev
+# databases (BorrowVault 5434, RentVault/RsvpVault 5432/5433, ...).
+# Production uses the shared 3pandalabs-postgres instance, not this file.
+#
+#   docker compose -f docker-compose.dev.yml up -d postgres   # DB only (usual: `npm run dev` on the host)
+#   docker compose -f docker-compose.dev.yml --profile full up # DB + API in containers
+#
+# The web app runs with `npm run dev` in ../web (it deploys to Cloudflare Workers, not Docker).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: transitvault
+      POSTGRES_PASSWORD: transitvault
+      POSTGRES_DB: transitvault
+    ports:
+      - "5438:5432"
+    volumes:
+      - transitvault_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transitvault"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    profiles: ["full"]
+    build: { context: ., dockerfile: Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://transitvault:transitvault@postgres:5432/transitvault
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  transitvault_pgdata:
