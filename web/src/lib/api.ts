@@ -194,7 +194,7 @@ export const updateMe = (b: { name?: string; phone?: string; alertsEnabled?: boo
 
 // ---- needs ----
 
-export const listNeeds = () => call<NeedSummary[]>("/needs");
+export const listNeeds = (query = "") => call<NeedSummary[]>(`/needs${query ? `?${query}` : ""}`);
 export const listMyNeeds = () => call<NeedSummary[]>("/needs/mine");
 export const createNeed = (b: NeedInput) => call<Need>("/needs", { method: "POST", body: b });
 export const getNeed = (id: string) => call<Need>(`/needs/${enc(id)}`);
@@ -222,7 +222,7 @@ export const getNeedMatches = (id: string) => call<FlightMatch[]>(`/needs/${enc(
 
 // ---- "I'm flying" posts ----
 
-export const listFlights = () => call<FlightSummary[]>("/flights");
+export const listFlights = (query = "") => call<FlightSummary[]>(`/flights${query ? `?${query}` : ""}`);
 export const listMyFlights = () => call<FlightSummary[]>("/flights/mine");
 export const createFlight = (b: FlightInput) => call<{ flight: Flight; matches: NeedMatch[] }>("/flights", { method: "POST", body: b });
 export const getFlight = (id: string) => call<Flight>(`/flights/${enc(id)}`);
