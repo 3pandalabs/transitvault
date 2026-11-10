@@ -65,9 +65,9 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 
 `Leg = { flightNumber, from, to, departsAt, arrivesAt }`. Times are the **airport-local wall-clock** printed on the ticket, encoded `YYYY-MM-DDTHH:mm:00Z` where the `Z` does not mean UTC. Never convert them by timezone. Legs must be contiguous (`legs[n].to = legs[n+1].from`). A leg may "arrive before it departs" (westbound across the date line), so only a span outside (−24 h, +36 h] is rejected. The server derives `origin`, `destination`, `layovers`, `flightNumbers` and `travelDate` (the first leg's local departure date).
 
-`NeedSummary = { id, travelerLabel, travelerAge, languages, travelDate, origin, destination, layovers, flightNumbers, legs, status, postedBy: { firstName }, mine: boolean, responseCount (0 unless mine), createdAt }`
+`NeedSummary = { id, travelerLabel, travelerAge, languages, travelDate, origin, destination, layovers, flightNumbers, legs, status, postedBy: { firstName }, mine: boolean, responseCount (0 unless mine), myConversationId: string|null, createdAt }`. `myConversationId` is the caller's conversation about this need if they have reached out (always null for the owner); the board shows a "You responded" marker from it.
 
-`Need = NeedSummary & { assistance, notes, myConversationId: string|null }`. `myConversationId` is the caller's conversation about this need if they have reached out (always null for the owner).
+`Need = NeedSummary & { assistance, notes }`.
 
 Need `status`: `open` (shown on the board) → `found` (the poster found a companion) or `closed` (no longer needed). The owner can reopen. Only `open` needs appear in `GET /needs` and accept new messages to reach out.
 

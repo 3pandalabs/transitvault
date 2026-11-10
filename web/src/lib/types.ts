@@ -35,13 +35,14 @@ export type NeedSummary = {
   postedBy: { firstName: string };
   mine: boolean;
   responseCount: number;
+  /** Set when the viewer has reached out to this need (always null for the owner). */
+  myConversationId: string | null;
   createdAt: string;
 };
 
 export type Need = NeedSummary & {
   assistance: string | null;
   notes: string | null;
-  myConversationId: string | null;
 };
 
 export type ConversationSummary = {
