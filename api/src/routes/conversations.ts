@@ -1,16 +1,18 @@
 import { alias } from "drizzle-orm/pg-core";
-import { and, desc, eq, or, type SQL } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
+import { and, desc, eq, isNull, or, type SQL } from "drizzle-orm";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import { db } from "../db/index.js";
 import { conversations, messages, needs, users } from "../db/schema.js";
-import { conflict, invalid, notFound } from "../lib/errors.js";
-import { normalizeFlightNumber, FLIGHT } from "../lib/legs.js";
+import { conflict, forbidden, invalid, notFound } from "../lib/errors.js";
+import { FLIGHT, normalizeFlightNumber } from "../lib/legs.js";
 import { sendMail, simpleMail } from "../lib/mailer.js";
+import { firstName, type Need } from "../lib/posts.js";
+import { isBlocked, thanksCounts } from "../lib/social.js";
 import { registerRateLimit } from "../plugins/rateLimit.js";
-import { firstName } from "./me.js";
+import { loadNeedFor } from "./needs.js";
 
 // Reaching out and the private conversation that follows (api/ROUTES.md
 // "Reaching out"). Phones and emails are never returned: people share contact
@@ -34,31 +36,44 @@ function conversationQuery(userId: string, extra?: SQL) {
 
 type Row = Awaited<ReturnType<typeof conversationQuery>>[number];
 
-async function view(r: Row, userId: string) {
-  const [last] = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, r.c.id))
-    .orderBy(desc(messages.createdAt))
-    .limit(1);
-  const isPoster = r.n.userId === userId;
-  return {
-    id: r.c.id,
-    need: {
-      id: r.n.id,
-      travelerLabel: r.n.travelerLabel,
-      origin: r.n.origin,
-      destination: r.n.destination,
-      travelDate: r.n.travelDate,
-      flightNumbers: r.n.flightNumbers,
-      status: r.n.status,
-    },
-    role: isPoster ? "poster" : "helper",
-    otherParty: { firstName: firstName(isPoster ? r.helperName : r.posterName) },
-    lastMessage: last ? { body: last.body, at: last.createdAt, mine: last.senderId === userId } : null,
-    helperFlightNumbers: r.c.helperFlightNumbers,
-    createdAt: r.c.createdAt,
-  };
+async function views(rows: Row[], userId: string) {
+  const thanks = await thanksCounts(rows.map((r) => (r.n.userId === userId ? r.c.helperId : r.n.userId)));
+  return Promise.all(
+    rows.map(async (r) => {
+      const [last] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, r.c.id))
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+      const isPoster = r.n.userId === userId;
+      const otherId = isPoster ? r.c.helperId : r.n.userId;
+      return {
+        id: r.c.id,
+        need: {
+          id: r.n.id,
+          travelerLabel: r.n.travelerLabel,
+          origin: r.n.origin,
+          destination: r.n.destination,
+          travelDate: r.n.travelDate,
+          flightNumbers: r.n.flightNumbers,
+          status: r.n.status,
+        },
+        role: isPoster ? "poster" : "helper",
+        otherParty: { id: otherId, firstName: firstName(isPoster ? r.helperName : r.posterName), thanksCount: thanks.get(otherId) ?? 0 },
+        lastMessage: last ? { body: last.body, at: last.createdAt, mine: last.senderId === userId } : null,
+        helperFlightNumbers: r.c.helperFlightNumbers,
+        thankedAt: r.c.thankedAt,
+        thankNote: r.c.thankNote,
+        blocked: await isBlocked(r.n.userId, r.c.helperId),
+        createdAt: r.c.createdAt,
+      };
+    }),
+  );
+}
+
+async function viewOne(r: Row, userId: string) {
+  return (await views([r], userId))[0];
 }
 
 async function load(id: string, userId: string): Promise<Row> {
@@ -73,6 +88,62 @@ async function post(conversationId: string, senderId: string, text: string) {
     await tx.update(conversations).set({ lastMessageAt: m.createdAt }).where(eq(conversations.id, conversationId));
     return m;
   });
+}
+
+/**
+ * Opens (or reuses) the one conversation for (need, helper) and posts the first
+ * message. Used both when a helper reaches out to a need and when a need's
+ * owner contacts a traveller's "I'm flying" post. The other party gets an
+ * email when the conversation is new (fail-soft).
+ */
+export async function openConversation(o: {
+  need: Need;
+  helperId: string;
+  helperFlightNumbers: string[];
+  senderId: string;
+  message: string;
+  log: FastifyBaseLogger;
+}) {
+  const [created] = await db
+    .insert(conversations)
+    .values({ needId: o.need.id, helperId: o.helperId, helperFlightNumbers: o.helperFlightNumbers })
+    .onConflictDoNothing({ target: [conversations.needId, conversations.helperId] })
+    .returning({ id: conversations.id });
+  const [conv] = created
+    ? [created]
+    : await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.needId, o.need.id), eq(conversations.helperId, o.helperId)))
+        .limit(1);
+  await post(conv.id, o.senderId, o.message);
+
+  if (created) {
+    const recipientId = o.senderId === o.helperId ? o.need.userId : o.helperId;
+    const [[recipient], [sender]] = await Promise.all([
+      db.select({ email: users.email }).from(users).where(eq(users.id, recipientId)).limit(1),
+      db.select({ name: users.name }).from(users).where(eq(users.id, o.senderId)).limit(1),
+    ]);
+    const n = o.need;
+    const who = firstName(sender.name);
+    const mail =
+      o.senderId === o.helperId
+        ? simpleMail(
+            recipient.email,
+            `${who} can help with ${n.origin} → ${n.destination} on ${n.travelDate}`,
+            `${who} saw your TransitVault post for ${n.travelerLabel} (${n.flightNumbers.join(", ")}) and sent you a message. Reply on TransitVault.`,
+            `/messages/${conv.id}`,
+          )
+        : simpleMail(
+            recipient.email,
+            `${who} asked if you can help on ${n.origin} → ${n.destination} on ${n.travelDate}`,
+            `You offered to help on TransitVault. ${who}'s ${n.travelerLabel.toLowerCase()} is flying ${n.origin} → ${n.destination} (${n.flightNumbers.join(", ")}) and they sent you a message. Reply on TransitVault.`,
+            `/messages/${conv.id}`,
+          );
+    void sendMail([mail], (m) => o.log.info(m)).catch((err) => o.log.warn({ err }, "conversation mail failed"));
+  }
+
+  return { conversation: await viewOne(await load(conv.id, o.senderId), o.senderId), created: Boolean(created) };
 }
 
 export async function conversationRoutes(fastify: FastifyInstance) {
@@ -90,57 +161,29 @@ export async function conversationRoutes(fastify: FastifyInstance) {
     },
     async (req, reply) => {
       const userId = req.userId!;
-      const [n] = await db.select().from(needs).where(eq(needs.id, req.params.id)).limit(1);
-      if (!n) throw notFound();
+      const { post: n } = await loadNeedFor(req.params.id, userId);
       if (n.userId === userId) throw conflict("own_need");
       if (n.status !== "open") throw conflict("need_not_open");
       const flights = (req.body.myFlightNumbers ?? []).filter(Boolean).map(normalizeFlightNumber);
       if (flights.some((f) => !FLIGHT.test(f))) throw invalid("invalid_flight_number");
-
-      // One conversation per (need, helper): reaching out again just adds a message.
-      const [created] = await db
-        .insert(conversations)
-        .values({ needId: n.id, helperId: userId, helperFlightNumbers: flights })
-        .onConflictDoNothing({ target: [conversations.needId, conversations.helperId] })
-        .returning({ id: conversations.id });
-      const [existing] = created
-        ? [created]
-        : await db
-            .select({ id: conversations.id })
-            .from(conversations)
-            .where(and(eq(conversations.needId, n.id), eq(conversations.helperId, userId)))
-            .limit(1);
-      await post(existing.id, userId, req.body.message);
-
-      if (created) {
-        // Tell the poster. Fail-soft: the reach-out stands even if mail doesn't go.
-        const [[owner], [me]] = await Promise.all([
-          db.select({ email: users.email }).from(users).where(eq(users.id, n.userId)).limit(1),
-          db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1),
-        ]);
-        void sendMail(
-          [
-            simpleMail(
-              owner.email,
-              `${firstName(me.name)} can help with ${n.origin} → ${n.destination} on ${n.travelDate}`,
-              `${firstName(me.name)} saw your TransitVault post for ${n.travelerLabel} (${n.flightNumbers.join(", ")}) and sent you a message. Reply on TransitVault.`,
-              `/messages/${existing.id}`,
-            ),
-          ],
-          (m) => req.log.info(m),
-        ).catch((err) => req.log.warn({ err }, "reach-out mail failed"));
-      }
-
-      return reply.code(created ? 201 : 200).send(await view(await load(existing.id, userId), userId));
+      const { conversation, created } = await openConversation({
+        need: n,
+        helperId: userId,
+        helperFlightNumbers: flights,
+        senderId: userId,
+        message: req.body.message,
+        log: req.log,
+      });
+      return reply.code(created ? 201 : 200).send(conversation);
     },
   );
 
   app.get("/conversations", async (req) => {
     const rows = await conversationQuery(req.userId!).orderBy(desc(conversations.lastMessageAt));
-    return Promise.all(rows.map((r) => view(r, req.userId!)));
+    return views(rows, req.userId!);
   });
 
-  app.get("/conversations/:id", { schema: { params } }, async (req) => view(await load(req.params.id, req.userId!), req.userId!));
+  app.get("/conversations/:id", { schema: { params } }, async (req) => viewOne(await load(req.params.id, req.userId!), req.userId!));
 
   app.get("/conversations/:id/messages", { schema: { params } }, async (req) => {
     await load(req.params.id, req.userId!);
@@ -157,10 +200,40 @@ export async function conversationRoutes(fastify: FastifyInstance) {
     "/conversations/:id/messages",
     { config: perUser(120), schema: { params, body: z.object({ body }) } },
     async (req, reply) => {
-      await load(req.params.id, req.userId!);
+      const r = await load(req.params.id, req.userId!);
+      if (await isBlocked(r.n.userId, r.c.helperId)) throw forbidden("blocked");
       const m = await post(req.params.id, req.userId!, req.body.body);
       return reply.code(201).send({ id: m.id, body: m.body, createdAt: m.createdAt, mine: true });
     },
   );
-}
 
+  // The poster thanks the helper, once. Shown as "Thanked by N families".
+  app.post(
+    "/conversations/:id/thanks",
+    { schema: { params, body: z.object({ note: z.string().trim().max(500).optional() }) } },
+    async (req) => {
+      const r = await load(req.params.id, req.userId!);
+      if (r.n.userId !== req.userId) throw notFound();
+      const [done] = await db
+        .update(conversations)
+        .set({ thankedAt: new Date(), thankNote: req.body.note || null })
+        .where(and(eq(conversations.id, r.c.id), isNull(conversations.thankedAt)))
+        .returning({ id: conversations.id });
+      if (!done) throw conflict("already_thanked");
+      const [h] = await db.select({ email: users.email }).from(users).where(eq(users.id, r.c.helperId)).limit(1);
+      const note = req.body.note ? ` They wrote: "${req.body.note}"` : "";
+      void sendMail(
+        [
+          simpleMail(
+            h.email,
+            `${firstName(r.posterName)} thanked you on TransitVault`,
+            `${firstName(r.posterName)} thanked you for helping ${r.n.travelerLabel.toLowerCase()} on ${r.n.origin} → ${r.n.destination}.${note}`,
+            `/messages/${r.c.id}`,
+          ),
+        ],
+        (m) => req.log.info(m),
+      ).catch((err) => req.log.warn({ err }, "thanks mail failed"));
+      return viewOne(await load(r.c.id, req.userId!), req.userId!);
+    },
+  );
+}

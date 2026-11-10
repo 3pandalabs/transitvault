@@ -6,7 +6,7 @@ How it works: `infra/architecture.md`. API contract: `api/ROUTES.md`. **Change t
 
 ## Keep it simple (Anil, 2026-11-10)
 
-Phase 1 is deliberately small: **no money, no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. Next on the list is Phase 2: board filters (from/to/via/date/flight/language) and helper posts. The indexes for the filters already exist.
+TransitVault is deliberately small: **no money, no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. Alerts and nudges are email only (SMTP); WhatsApp is a share link (`wa.me`), not an API. Built so far: needs board, public share preview (`/n/:id`), "I'm flying" posts with two-way matching and email alerts, thank-you notes, report/block, and the stale-need nudge. Next: board filters (from/to/via/date/flight/language); the indexes exist.
 
 ## Naming
 
@@ -21,7 +21,9 @@ Hostnames, **all under one first label** (Cloudflare's per-app cert depends on i
 
 ## Invariants
 
-- Signed-in only. Needs describe elderly people travelling alone, so nothing about them is public or indexable.
+- Signed-in only, except the share preview `GET /public/needs/:id`, which returns only the label, route, date, flights and languages of an open, visible need (no age, notes, assistance or poster) and is `noindex`.
+- Posts reported by 3 different people are hidden (`hidden_at`) from boards, previews, matches and alerts. Blocked pairs never see each other's posts and can't message each other.
+- Match alerts go out at most once per (need, flight post) pair (`match_alerts`); the nudge at most once per need (`nudged_at`).
 - The API never returns another user's phone or email. People share contact details in conversations themselves.
 - One conversation per (need, helper). Conversations: 404 for non-parties. Closed needs: owner only.
 - Leg times are airport-local wall-clock encoded with `Z` (`api/src/lib/legs.ts`). Never convert them by timezone. The route columns are always derived from `legs`, never sent by the client.

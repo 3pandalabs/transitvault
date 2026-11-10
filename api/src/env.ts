@@ -28,6 +28,8 @@ const schema = z.object({
   SMTP_USER: optional,
   SMTP_PASS: optional,
   EMAIL_FROM_NAME: z.string().default("TransitVault"),
+  // Where user reports go (api/ROUTES.md "Safety").
+  OPS_EMAIL: z.string().email().default("support@3pandalabs.com"),
 
   // Shared with the web Worker (sent as X-Internal-Secret on api-internal calls).
   // Only with it is X-Client-IP trusted for rate-limit keys. Optional.

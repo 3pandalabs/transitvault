@@ -17,7 +17,7 @@ export default function NewNeed() {
         submitLabel="Post need"
         onSubmit={async (input) => {
           const need = await createNeed(input);
-          router.push(`/needs/${need.id}`);
+          router.push(`/needs/${need.id}?posted=1`);
         }}
       />
     </div>

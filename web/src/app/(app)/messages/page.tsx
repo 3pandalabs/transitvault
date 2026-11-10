@@ -3,6 +3,8 @@
 import { MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { EmptyState, LoadError, Loading, NeedStatusBadge, PageHeader } from "@/components/common";
+import { ThanksBadge } from "@/components/needs";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { listConversations } from "@/lib/api";
 import { date, dateTime } from "@/lib/format";
@@ -36,6 +38,14 @@ export default function Inbox() {
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="font-medium">
                     {c.otherParty.firstName}
+                    <span className="ml-2">
+                      <ThanksBadge count={c.otherParty.thanksCount} />
+                    </span>
+                    {c.blocked ? (
+                      <Badge variant="muted" className="ml-2">
+                        Blocked
+                      </Badge>
+                    ) : null}
                     <span className="ml-2 text-sm font-normal text-fg-muted">
                       {c.role === "poster" ? "reached out about your post" : "posted this need"}
                     </span>

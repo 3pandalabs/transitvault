@@ -1,12 +1,13 @@
 "use client";
 
+import { Bell, BellOff } from "lucide-react";
 import { useState } from "react";
-import { ErrorText, Field, PageHeader, Panel } from "@/components/common";
+import { ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorMessage, updateMe } from "@/lib/api";
+import { errorMessage, listBlocks, unblockUser, updateMe } from "@/lib/api";
 import { PHONE_RE } from "@/lib/format";
-import { useAction } from "@/lib/hooks";
+import { useAction, useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 
 export default function Profile() {
@@ -29,7 +30,7 @@ export default function Profile() {
   }
 
   return (
-    <div className="mx-auto max-w-lg">
+    <div className="mx-auto max-w-lg space-y-5">
       <PageHeader title="Profile" subtitle={user.email} />
       <Panel>
         <form onSubmit={submit} className="space-y-4">
@@ -46,6 +47,73 @@ export default function Profile() {
           </Button>
         </form>
       </Panel>
+      <AlertsPanel />
+      <BlockedPanel />
     </div>
+  );
+}
+
+function AlertsPanel() {
+  const { user, setMe } = useSession();
+  const act = useAction();
+  const on = user.alertsEnabled;
+  return (
+    <Panel>
+      <PanelTitle>Match alerts</PanelTitle>
+      <p className="text-sm text-fg-muted">
+        Email me when someone posts a need on a flight I&apos;m taking, or offers to help on my parent&apos;s flight.
+      </p>
+      <div className="mt-3 flex items-center gap-3">
+        <Button
+          variant={on ? "default" : "outline"}
+          disabled={act.busy}
+          onClick={() => void act.run(async () => setMe(await updateMe({ alertsEnabled: !on })), errorMessage)}
+          aria-pressed={on}
+        >
+          {on ? <Bell /> : <BellOff />} {on ? "Alerts on" : "Alerts off"}
+        </Button>
+        <span className="text-sm text-fg-muted">{on ? "Tap to turn off." : "Tap to turn on."}</span>
+      </div>
+      <ErrorText>{act.error}</ErrorText>
+    </Panel>
+  );
+}
+
+function BlockedPanel() {
+  const blocks = useAsync(listBlocks, "blocks");
+  const act = useAction();
+  return (
+    <Panel>
+      <PanelTitle>Blocked people</PanelTitle>
+      {blocks.error ? (
+        <LoadError error={blocks.error} onRetry={blocks.reload} />
+      ) : !blocks.data ? (
+        <Loading />
+      ) : blocks.data.length === 0 ? (
+        <p className="text-sm text-fg-muted">You haven&apos;t blocked anyone.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {blocks.data.map((b) => (
+            <li key={b.userId} className="flex items-center justify-between gap-3 py-2">
+              <span>{b.firstName}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={act.busy}
+                onClick={() =>
+                  void act.run(async () => {
+                    await unblockUser(b.userId);
+                    blocks.reload();
+                  }, errorMessage)
+                }
+              >
+                Unblock
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorText>{act.error}</ErrorText>
+    </Panel>
   );
 }

@@ -5,7 +5,28 @@
 // server-side fetch means no orange-to-orange problem, and the API's bearer
 // check stays the only authorization boundary.
 
-import type { AuthResponse, Conversation, ConversationSummary, Me, Message, Need, NeedInput, NeedPatch, NeedSummary, User } from "./types";
+import type {
+  AuthResponse,
+  BlockedUser,
+  Conversation,
+  ConversationSummary,
+  Flight,
+  FlightInput,
+  FlightMatch,
+  FlightPatch,
+  FlightSummary,
+  Me,
+  Message,
+  Need,
+  NeedInput,
+  NeedMatch,
+  NeedPatch,
+  NeedSummary,
+  PublicNeed,
+  ReportReason,
+  ReportTarget,
+  User,
+} from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -27,6 +48,10 @@ const MESSAGE_COPY: Record<string, string> = {
   invalid_or_expired_token: "This reset link has expired or was already used. Ask for a new one.",
   own_need: "This is your own post. People on the same flight can reach out to you.",
   need_not_open: "This need is no longer open, so you can’t reach out to it.",
+  own_flight: "This is your own flight post. Families with a matching need can contact you.",
+  flight_not_open: "This person has closed their flight post.",
+  blocked: "You can't message this person. One of you has blocked the other.",
+  already_thanked: "You've already said thank you in this conversation.",
   rate_limited: "You're doing that too often. Wait a minute and try again.",
 };
 
@@ -165,7 +190,7 @@ export const confirmPasswordReset = (token: string, password: string) =>
   call<void>("/auth/password-reset/confirm", { method: "POST", body: { token, password }, auth: false });
 
 export const getMe = () => call<Me>("/me");
-export const updateMe = (b: { name?: string; phone?: string }) => call<{ user: User }>("/me", { method: "PATCH", body: b });
+export const updateMe = (b: { name?: string; phone?: string; alertsEnabled?: boolean }) => call<{ user: User }>("/me", { method: "PATCH", body: b });
 
 // ---- needs ----
 
@@ -184,3 +209,32 @@ export const getConversation = (id: string) => call<Conversation>(`/conversation
 export const listMessages = (id: string) => call<Message[]>(`/conversations/${enc(id)}/messages`);
 export const sendMessage = (id: string, body: string) =>
   call<Message>(`/conversations/${enc(id)}/messages`, { method: "POST", body: { body } });
+export const sayThanks = (id: string, note?: string) =>
+  call<Conversation>(`/conversations/${enc(id)}/thanks`, { method: "POST", body: note ? { note } : {} });
+
+// ---- sharing (public, no auth) ----
+
+export const getPublicNeed = (id: string) => call<PublicNeed>(`/public/needs/${enc(id)}`, { auth: false });
+
+// ---- matches ----
+
+export const getNeedMatches = (id: string) => call<FlightMatch[]>(`/needs/${enc(id)}/matches`);
+
+// ---- "I'm flying" posts ----
+
+export const listFlights = () => call<FlightSummary[]>("/flights");
+export const listMyFlights = () => call<FlightSummary[]>("/flights/mine");
+export const createFlight = (b: FlightInput) => call<{ flight: Flight; matches: NeedMatch[] }>("/flights", { method: "POST", body: b });
+export const getFlight = (id: string) => call<Flight>(`/flights/${enc(id)}`);
+export const updateFlight = (id: string, b: FlightPatch) => call<Flight>(`/flights/${enc(id)}`, { method: "PATCH", body: b });
+export const getFlightMatches = (id: string) => call<NeedMatch[]>(`/flights/${enc(id)}/matches`);
+export const contactFlight = (id: string, b: { needId: string; message: string }) =>
+  call<Conversation>(`/flights/${enc(id)}/contact`, { method: "POST", body: b });
+
+// ---- safety ----
+
+export const report = (b: { targetType: ReportTarget; targetId: string; reason: ReportReason; note?: string }) =>
+  call<{ ok: true }>("/reports", { method: "POST", body: b });
+export const listBlocks = () => call<BlockedUser[]>("/blocks");
+export const blockUser = (id: string) => call<void>(`/users/${enc(id)}/block`, { method: "POST" });
+export const unblockUser = (id: string) => call<void>(`/users/${enc(id)}/block`, { method: "DELETE" });

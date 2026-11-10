@@ -7,10 +7,13 @@ import { DomainError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logRedact.js";
 import { recordRequest, startCpuSampler } from "./metrics/collector.js";
 import { authRoutes } from "./routes/auth.js";
+import { startNudges } from "./lib/nudges.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { flightRoutes } from "./routes/flights.js";
 import { meRoutes } from "./routes/me.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { needRoutes } from "./routes/needs.js";
+import { safetyRoutes } from "./routes/safety.js";
 
 const app = Fastify({
   // Paths only: query strings never reach the logs.
@@ -56,8 +59,12 @@ app.setErrorHandler((err: FastifyError & { publicCode?: string }, req, reply) =>
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(needRoutes);
+await app.register(flightRoutes);
 await app.register(conversationRoutes);
+await app.register(safetyRoutes);
 await app.register(metricsRoutes);
+
+startNudges(app.log);
 
 app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

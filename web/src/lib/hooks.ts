@@ -82,3 +82,15 @@ export function useAction() {
   }, []);
   return { busy, error, setError, run };
 }
+
+/**
+ * One query-string value, read without useSearchParams (which would need a
+ * Suspense boundary for the static build). Null during SSR.
+ */
+export function useQueryParam(name: string): string | null {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get(name),
+    () => null,
+  );
+}

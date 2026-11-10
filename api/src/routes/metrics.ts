@@ -21,6 +21,8 @@ type CountsRow = {
   open_needs: number;
   found_needs: number;
   needs_last_7d: number;
+  open_flights: number;
+  reports_last_7d: number;
   conversations: number;
   messages_last_24h: number;
   active_sessions: number;
@@ -41,6 +43,8 @@ export async function metricsRoutes(app: FastifyInstance) {
         (select count(*) from needs where status = 'open' and travel_date >= current_date - 1)::int as open_needs,
         (select count(*) from needs where status = 'found')::int as found_needs,
         (select count(*) from needs where created_at > now() - interval '7 days')::int as needs_last_7d,
+        (select count(*) from flight_posts where status = 'open' and travel_date >= current_date - 1)::int as open_flights,
+        (select count(*) from reports where created_at > now() - interval '7 days')::int as reports_last_7d,
         (select count(*) from conversations)::int as conversations,
         (select count(*) from messages where created_at > now() - interval '24 hours')::int as messages_last_24h,
         (select count(*) from sessions where expires_at > now())::int as active_sessions
@@ -64,6 +68,8 @@ export async function metricsRoutes(app: FastifyInstance) {
         openNeeds: c.open_needs,
         foundNeeds: c.found_needs,
         needsLast7d: c.needs_last_7d,
+        openFlights: c.open_flights,
+        reportsLast7d: c.reports_last_7d,
         conversations: c.conversations,
         messagesLast24h: c.messages_last_24h,
         activeSessions: c.active_sessions,
