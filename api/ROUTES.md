@@ -44,7 +44,7 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| GET | `/needs` | — | `NeedSummary[]`: open needs from yesterday onwards, soonest travel date first (max 200) |
+| GET | `/needs` | query: [board filters](#board-filters) | `NeedSummary[]`: open needs from yesterday onwards, soonest travel date first (max 200) |
 | GET | `/needs/mine` | — | `NeedSummary[]`: the caller's needs, any status |
 | POST | `/needs` | `NeedInput` | 201 `Need` |
 | GET | `/needs/:id` | — | `Need` (any signed-in user; a closed need only for its owner) |
@@ -109,7 +109,7 @@ A traveller posts their own flight once and offers to help. The matching works i
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| GET | `/flights` | — | `FlightSummary[]`: open flight posts from yesterday onwards, soonest first (max 200) |
+| GET | `/flights` | query: [board filters](#board-filters) | `FlightSummary[]`: open flight posts from yesterday onwards, soonest first (max 200) |
 | GET | `/flights/mine` | — | `FlightSummary[]` |
 | POST | `/flights` | `{ legs: Leg[] (1–4), languages: string[] (1–8), note? (≤ 1000) }` | 201 `{ flight: Flight, matches: NeedMatch[] }` |
 | GET | `/flights/:id` | — | `Flight` (a closed one only for its owner) |
@@ -148,6 +148,17 @@ Once an hour the API emails the poster of every need that is still `open` the da
 
 Auth routes as BorrowVault (per IP + per email + global ceiling). `POST /needs` and `POST /flights` 20/hour per user. `POST /needs/:id/reach-out` and `POST /flights/:id/contact` 30/hour per user. Messages 120/hour per user. Reports 20/hour per user. `GET /public/needs/:id` 120/min per IP.
 
-## Later
+## Board filters
 
-Filters on `GET /needs` and `GET /flights`: `from`, `to`, `via`, `date`, `flight`, `language`. The indexes are already in place.
+`GET /needs` and `GET /flights` take optional query parameters. They combine with AND, and blank values are ignored.
+
+| Param | Matches |
+|---|---|
+| `from` | IATA code, the trip origin |
+| `to` | IATA code, the final destination |
+| `via` | IATA code, one of the layover airports |
+| `date` | `YYYY-MM-DD`, the travel date (first leg local departure) |
+| `flight` | a flight number on any leg, normalized like legs (`ai 0101` → `AI101`) |
+| `language` | one of the listed languages, case-insensitive |
+
+A malformed value (bad IATA code, date or flight number) is 400. The web boards keep the filters in the URL so a filtered board can be shared.

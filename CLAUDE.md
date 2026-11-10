@@ -6,7 +6,7 @@ How it works: `infra/architecture.md`. API contract: `api/ROUTES.md`. **Change t
 
 ## Keep it simple (Anil, 2026-11-10)
 
-TransitVault is deliberately small: **no money, no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. Alerts and nudges are email only (SMTP); WhatsApp is a share link (`wa.me`), not an API. Built so far: needs board, public share preview (`/n/:id`), "I'm flying" posts with two-way matching and email alerts, thank-you notes, report/block, and the stale-need nudge. Next: board filters (from/to/via/date/flight/language); the indexes exist.
+TransitVault is deliberately small: **no money, no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. Alerts and nudges are email only (SMTP); WhatsApp is a share link (`wa.me`), not an API. Built so far: needs board, public share preview (`/n/:id`), "I'm flying" posts with two-way matching and email alerts, thank-you notes, report/block, the stale-need nudge, and board filters (from/to/via/date/flight/language).
 
 ## Naming
 

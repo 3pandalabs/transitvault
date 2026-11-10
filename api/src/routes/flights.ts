@@ -9,6 +9,7 @@ import { alertForNewFlight } from "../lib/alerts.js";
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 import { firstName, flightSummaries, needSummaries, needsMatching, routeColumns } from "../lib/posts.js";
 import { blockedWith, isBlocked } from "../lib/social.js";
+import { boardFilters, boardQuery } from "../lib/filters.js";
 import { registerRateLimit } from "../plugins/rateLimit.js";
 import { openConversation } from "./conversations.js";
 import { languagesSchema, legSchema } from "./needs.js";
@@ -53,7 +54,7 @@ export async function flightRoutes(fastify: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
   const params = z.object({ id: z.string().uuid() });
 
-  app.get("/flights", async (req) => {
+  app.get("/flights", { schema: { querystring: boardQuery } }, async (req) => {
     const blocked = [...(await blockedWith(req.userId!))];
     const rows = await withPoster()
       .where(
@@ -62,6 +63,7 @@ export async function flightRoutes(fastify: FastifyInstance) {
           isNull(flightPosts.hiddenAt),
           sql`${flightPosts.travelDate} >= current_date - 1`,
           blocked.length ? notInArray(flightPosts.userId, blocked) : undefined,
+          boardFilters(flightPosts, req.query),
         ),
       )
       .orderBy(asc(flightPosts.travelDate), asc(flightPosts.createdAt))

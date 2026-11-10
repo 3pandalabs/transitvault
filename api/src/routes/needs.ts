@@ -9,6 +9,7 @@ import { alertForNewNeed } from "../lib/alerts.js";
 import { notFound } from "../lib/errors.js";
 import { flightSummaries, flightsMatching, needSummaries, publicNeed, routeColumns } from "../lib/posts.js";
 import { blockedWith } from "../lib/social.js";
+import { boardFilters, boardQuery } from "../lib/filters.js";
 import { registerRateLimit } from "../plugins/rateLimit.js";
 
 // The needs board (api/ROUTES.md "Needs") and its public share preview.
@@ -72,7 +73,7 @@ export async function needRoutes(fastify: FastifyInstance) {
     const a = authed.withTypeProvider<ZodTypeProvider>();
     a.addHook("preHandler", requireAuth);
 
-    a.get("/needs", async (req) => {
+    a.get("/needs", { schema: { querystring: boardQuery } }, async (req) => {
       const blocked = [...(await blockedWith(req.userId!))];
       const rows = await withPoster()
         .where(
@@ -81,6 +82,7 @@ export async function needRoutes(fastify: FastifyInstance) {
             isNull(needs.hiddenAt),
             sql`${needs.travelDate} >= current_date - 1`,
             blocked.length ? notInArray(needs.userId, blocked) : undefined,
+            boardFilters(needs, req.query),
           ),
         )
         .orderBy(asc(needs.travelDate), asc(needs.createdAt))

@@ -1,7 +1,9 @@
 "use client";
 
-import { HandHeart, Plus } from "lucide-react";
+import { HandHeart, Plus, SearchX } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
+import { BoardFilters, useBoardQuery } from "@/components/BoardFilters";
 import { EmptyState, LoadError, Loading, PageHeader } from "@/components/common";
 import { FlightCard } from "@/components/flights";
 import { buttonVariants } from "@/components/ui/button";
@@ -9,7 +11,16 @@ import { listFlights } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
 
 export default function FlightsBoard() {
-  const flights = useAsync(listFlights, "flights");
+  return (
+    <Suspense fallback={<Loading />}>
+      <Board />
+    </Suspense>
+  );
+}
+
+function Board() {
+  const query = useBoardQuery();
+  const flights = useAsync(() => listFlights(query), `flights?${query}`);
   return (
     <>
       <PageHeader
@@ -21,10 +32,13 @@ export default function FlightsBoard() {
           </Link>
         }
       />
+      <BoardFilters key={query} />
       {flights.error ? (
         <LoadError error={flights.error} onRetry={flights.reload} />
       ) : !flights.data ? (
         <Loading />
+      ) : flights.data.length === 0 && query ? (
+        <EmptyState icon={<SearchX />} title="Nothing matches these filters" body="Try a nearby date, or clear a filter or two." />
       ) : flights.data.length === 0 ? (
         <EmptyState
           icon={<HandHeart />}
