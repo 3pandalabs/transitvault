@@ -10,6 +10,9 @@ import type {
   BlockedUser,
   Conversation,
   ConversationSummary,
+  Credits,
+  FeedbackView,
+  PaymentsConfig,
   Flight,
   FlightInput,
   FlightMatch,
@@ -52,6 +55,16 @@ const MESSAGE_COPY: Record<string, string> = {
   flight_not_open: "This person has closed their flight post.",
   blocked: "You can't message this person. One of you has blocked the other.",
   already_thanked: "You've already said thank you in this conversation.",
+  payments_disabled: "Accepting a helper isn't available right now.",
+  payment_unavailable: "We couldn't start the payment. Please try again in a few minutes.",
+  helper_already_confirmed: "You've already confirmed a helper for this trip.",
+  acceptance_pending: "You're already paying to accept another helper for this trip. Finish or cancel that checkout first (it expires after 30 minutes).",
+  helper_confirmed: "A helper is confirmed for this trip, so it can't be reopened.",
+  helper_confirmed_legs_locked: "A helper is confirmed for these flights, so they can't be changed. Contact support@3pandalabs.com if the trip changed.",
+  reward_released: "The trip is finished, so the thank-you credit choice can't be changed any more.",
+  too_early: "You can answer once the flight has landed.",
+  already_answered: "This has already been answered. Thank you!",
+  not_accepted: "This helper wasn't accepted for the trip.",
   rate_limited: "You're doing that too often. Wait a minute and try again.",
 };
 
@@ -199,7 +212,7 @@ export const listMyNeeds = () => call<NeedSummary[]>("/needs/mine");
 export const createNeed = (b: NeedInput) => call<Need>("/needs", { method: "POST", body: b });
 export const getNeed = (id: string) => call<Need>(`/needs/${enc(id)}`);
 export const updateNeed = (id: string, b: NeedPatch) => call<Need>(`/needs/${enc(id)}`, { method: "PATCH", body: b });
-export const reachOut = (id: string, b: { message: string; myFlightNumbers?: string[] }) =>
+export const reachOut = (id: string, b: { message: string; myFlightNumbers?: string[]; declineReward?: boolean }) =>
   call<Conversation>(`/needs/${enc(id)}/reach-out`, { method: "POST", body: b });
 
 // ---- conversations ----
@@ -211,6 +224,20 @@ export const sendMessage = (id: string, body: string) =>
   call<Message>(`/conversations/${enc(id)}/messages`, { method: "POST", body: { body } });
 export const sayThanks = (id: string, note?: string) =>
   call<Conversation>(`/conversations/${enc(id)}/thanks`, { method: "POST", body: note ? { note } : {} });
+
+// ---- paid help ----
+
+export const getPaymentsConfig = () => call<PaymentsConfig>("/payments/config", { auth: false });
+export const getCredits = () => call<Credits>("/me/credits");
+export const acceptHelper = (conversationId: string) =>
+  call<{ checkoutUrl: string | null; conversation: Conversation }>(`/conversations/${enc(conversationId)}/accept`, { method: "POST" });
+export const setRewardDeclined = (conversationId: string, declined: boolean) =>
+  call<Conversation>(`/conversations/${enc(conversationId)}/reward`, { method: "PUT", body: { declined } });
+export const answerOutcome = (conversationId: string, helped: boolean) =>
+  call<Conversation>(`/conversations/${enc(conversationId)}/outcome`, { method: "POST", body: { helped } });
+export const getFeedback = (token: string) => call<FeedbackView>(`/feedback?token=${enc(token)}`, { auth: false });
+export const answerFeedback = (token: string, helped: boolean) =>
+  call<FeedbackView>("/feedback", { method: "POST", body: { token, helped }, auth: false });
 
 // ---- sharing (public, no auth) ----
 

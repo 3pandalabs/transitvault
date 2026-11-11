@@ -42,6 +42,8 @@ export type NeedSummary = {
   responseCount: number;
   /** Set when the viewer has reached out to this need (always null for the owner). */
   myConversationId: string | null;
+  /** Paid help: the owner's accepted helper (null for others, or if none). */
+  acceptedHelper: { conversationId: string; status: AcceptanceStatus; firstName: string } | null;
   createdAt: string;
 };
 
@@ -69,10 +71,58 @@ export type ConversationSummary = {
   thankNote: string | null;
   /** Either party has blocked the other: sending is refused. */
   blocked: boolean;
+  /** Paid help: the helper is helping for free (no thank-you credit). */
+  rewardDeclined: boolean;
+  /** Paid help: this conversation's helper was accepted (null otherwise). */
+  acceptance: Acceptance | null;
+  /** The need already has an accepted helper (this one or another). */
+  needHasHelper: boolean;
   createdAt: string;
 };
 
 export type Conversation = ConversationSummary;
+
+// ---- paid help ----
+
+export type AcceptanceStatus = "pending_payment" | "confirmed" | "cancelled";
+
+export type Acceptance = {
+  id: string;
+  status: AcceptanceStatus;
+  feeCents: number;
+  /** Poster only (null for the helper). */
+  creditAppliedCents: number | null;
+  cashCents: number | null;
+  checkoutUrl: string | null;
+  confirmedAt: string | null;
+  landsAt: string | null;
+  feedbackDueAt: string | null;
+  canAnswer: boolean;
+  outcome: "helped" | "no_show" | null;
+  outcomeAt: string | null;
+  rewardDeclined: boolean;
+  rewardReleasedAt: string | null;
+  rewardCreditedCents: number;
+  refundedAt: string | null;
+};
+
+export type PaymentsConfig = { enabled: boolean; feeCents: number; rewardCents: number; currency: string };
+
+export type CreditReason = "helper_reward" | "fee_applied" | "fee_restored" | "no_show_refund" | "card_refund";
+export type Credits = {
+  balanceCents: number;
+  entries: { id: string; amountCents: number; reason: CreditReason; needId: string | null; createdAt: string }[];
+};
+
+export type FeedbackView = {
+  helperFirstName: string;
+  travelerLabel: string;
+  origin: string;
+  destination: string;
+  travelDate: string;
+  outcome: "helped" | "no_show" | null;
+  conversationId: string;
+};
 
 export type Message = { id: string; body: string; createdAt: string; mine: boolean };
 

@@ -10,4 +10,4 @@ Is your parent flying alone? Post their flight: who's travelling, the languages 
 | `web/` | Next.js on Cloudflare Workers: needs board, post a need, messages |
 | `infra/` | [How it works](infra/architecture.md), [provisioning runbook](infra/README.md) |
 
-Status: Phase 1 (needs board) built 2026-11-10, not yet deployed. Phase 2: board filters.
+Status: Phase 1 (needs board) built 2026-11-10. Phase 2: board filters. Optional paid help (Stripe, off by default) added 2026-11-11.

@@ -2,7 +2,7 @@
 
 A needs board for elderly parents flying alone. A family member posts the trip ("my mother, 68, Hindi/Punjabi, DEL → FRA → ORD on 1 Dec, LH761 + LH430, needs a wheelchair at Frankfurt"). Other signed-in users browse the board. Anyone on a matching flight reaches out with a message, which opens a private conversation. People share phone numbers there when they choose to.
 
-Phase 1 deliberately has **no money, no uploads, no verification and no live tracking**.
+Phase 1 deliberately has **no uploads, no verification and no live tracking**. Money is limited to the optional **paid help** step below (off unless Stripe is configured).
 
 ## Stack (same as the other org apps, minus what Phase 1 doesn't need)
 
@@ -11,9 +11,10 @@ Phase 1 deliberately has **no money, no uploads, no verification and no live tra
 | Web | Next.js 16, React 19, Tailwind 4, lucide | Cloudflare Workers (`transitvault.3pandalabs.com`) |
 | API | Fastify 5 + Zod + JWT | Coolify on the Hetzner box (`transitvault-api`) |
 | Data | Postgres 17 + Drizzle | shared `3pandalabs-postgres`, db `transitvault` |
-| Mail | SMTP (Gmail app password) → org mailer fallback | "someone reached out" + password reset |
+| Mail | SMTP (Gmail app password) → org mailer fallback | "someone reached out", password reset, paid-help mails |
+| Payments (optional) | Stripe Checkout + one webhook, called over HTTPS (no SDK) | only when `PAYMENTS_ENABLED` + keys are set |
 
-There's no Temporal worker and no R2 media bucket: nothing in Phase 1 needs a timer or a file.
+There's no Temporal worker and no R2 media bucket. The only timers (stale-need nudge, paid-help sweep) are hourly idempotent DB sweeps inside the API process.
 
 ```mermaid
 flowchart LR
@@ -21,6 +22,9 @@ flowchart LR
   B -->|JSON, Bearer JWT| API[transitvault-api]
   API <--> PG[(Postgres: transitvault)]
   API -->|reach-out email| M[SMTP / mailer]
+  API -->|Checkout session, refund| S[Stripe]
+  S -->|webhook: checkout.session.*| API
+  B -->|card payment| S
 ```
 
 ## Flow
@@ -41,9 +45,37 @@ sequenceDiagram
   P->>API: PATCH /needs/:id {status: "found"}
 ```
 
+## Paid help (optional)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor P as Poster
+  actor H as Helper
+  participant API
+  participant S as Stripe
+  H->>API: POST /needs/:id/reach-out {declineReward?}
+  P->>API: POST /conversations/:id/accept
+  Note over API: $10 fee − poster's credit; credit covers it → confirmed, skip Stripe
+  API->>S: create Checkout Session (remainder)
+  API-->>P: checkoutUrl
+  P->>S: pays by card
+  S->>API: POST /stripe/webhook checkout.session.completed (signed)
+  API-->>P: email "helper confirmed"
+  API-->>H: email "you were accepted"
+  Note over API: hourly sweep, last leg lands + 4 h
+  API-->>P: email "Did H help?" Yes / No (single-use link)
+  alt Yes, or no answer in 48 h
+    API->>API: +$5 credit to H (unless helping for free)
+  else No, didn't show
+    API->>API: +$10 credit to P, strike on H
+    Note over API,S: card refund only on request (ops route)
+  end
+```
+
 ## Data model
 
-`users` (name, email, phone; one kind of account) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers) · `messages` · `sessions`, `password_reset_tokens`.
+`users` (name, email, phone, `strike_count`; one kind of account) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers, `reward_declined`) · `helper_acceptances` (one live per need: fee split, Stripe ids, landing/feedback times, outcome, refund) · `credit_entries` (credit ledger, balance = sum) · `messages` · `sessions`, `password_reset_tokens`.
 
 ## Privacy
 

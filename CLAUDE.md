@@ -6,7 +6,7 @@ How it works: `infra/architecture.md`. API contract: `api/ROUTES.md`. **Change t
 
 ## Keep it simple (Anil, 2026-11-10)
 
-TransitVault is deliberately small: **no money, no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. Alerts and nudges are email only (SMTP); WhatsApp is a share link (`wa.me`), not an API. Built so far: needs board, public share preview (`/n/:id`), "I'm flying" posts with two-way matching and email alerts, thank-you notes, report/block, the stale-need nudge, and board filters (from/to/via/date/flight/language).
+TransitVault is deliberately small: **no document or boarding-pass uploads, no verification, no live tracking, no roles.** Don't add any of these, or a new vendor/tool, without Anil asking. The one exception Anil asked for (2026-11-11) is **paid help**: $10 per trip via Stripe Checkout when a poster accepts a helper, a $5 credit reward, no-show refunds as credit (`api/ROUTES.md` "Paid help"). It's off unless `PAYMENTS_ENABLED` + Stripe keys are set, and must keep failing soft to the free flow. Alerts and nudges are email only (SMTP); WhatsApp is a share link (`wa.me`), not an API. Built so far: needs board, public share preview (`/n/:id`), "I'm flying" posts with two-way matching and email alerts, thank-you notes, report/block, the stale-need nudge, and board filters (from/to/via/date/flight/language).
 
 ## Naming
 
@@ -17,7 +17,7 @@ Hostnames, **all under one first label** (Cloudflare's per-app cert depends on i
 
 ## Layout
 
-`api/` (Fastify 5 + Drizzle + Zod + JWT) · `web/` (Next.js 16 on Cloudflare Workers) · `infra/`. There's no `app/`: the web app is mobile-first and installable as a PWA. There's no Temporal worker either, because nothing needs a timer.
+`api/` (Fastify 5 + Drizzle + Zod + JWT) · `web/` (Next.js 16 on Cloudflare Workers) · `infra/`. There's no `app/`: the web app is mobile-first and installable as a PWA. There's no Temporal worker either: the only timers are hourly in-process DB sweeps (nudges, paid help).
 
 ## Invariants
 
@@ -26,7 +26,8 @@ Hostnames, **all under one first label** (Cloudflare's per-app cert depends on i
 - Match alerts go out at most once per (need, flight post) pair (`match_alerts`); the nudge at most once per need (`nudged_at`).
 - The API never returns another user's phone or email. People share contact details in conversations themselves.
 - One conversation per (need, helper). Conversations: 404 for non-parties. Closed needs: owner only.
-- Leg times are airport-local wall-clock encoded with `Z` (`api/src/lib/legs.ts`). Never convert them by timezone. The route columns are always derived from `legs`, never sent by the client.
+- Leg times are airport-local wall-clock encoded with `Z` (`api/src/lib/legs.ts`). Never convert them by timezone. The single exception is `lib/landing.ts`, which estimates the real landing instant for the paid-help "did they help?" email and never writes it back to legs. The route columns are always derived from `legs`, never sent by the client.
+- Paid help: one live acceptance per need; credit is a ledger (`credit_entries`, balance = sum) with each reason at most once per acceptance; every money step is an idempotent conditional update; the Stripe webhook verifies its signature on the raw body.
 
 ## Conventions copied from the org checklist (knowledge_base/launching-a-new-app.md)
 

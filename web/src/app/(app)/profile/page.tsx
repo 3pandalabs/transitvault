@@ -3,6 +3,7 @@
 import { Bell, BellOff } from "lucide-react";
 import { useState } from "react";
 import { ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle } from "@/components/common";
+import { CreditPanel } from "@/components/PaidHelp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorMessage, listBlocks, unblockUser, updateMe } from "@/lib/api";
@@ -47,6 +48,7 @@ export default function Profile() {
           </Button>
         </form>
       </Panel>
+      <CreditPanel />
       <AlertsPanel />
       <BlockedPanel />
     </div>

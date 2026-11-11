@@ -9,6 +9,7 @@ import { conversations, messages, needs, users } from "../db/schema.js";
 import { conflict, forbidden, invalid, notFound } from "../lib/errors.js";
 import { FLIGHT, normalizeFlightNumber } from "../lib/legs.js";
 import { sendMail, simpleMail } from "../lib/mailer.js";
+import { acceptanceView, acceptHelper, liveAcceptances, resolveOutcome, rewardCredited } from "../lib/payments.js";
 import { firstName, type Need } from "../lib/posts.js";
 import { isBlocked, thanksCounts } from "../lib/social.js";
 import { registerRateLimit } from "../plugins/rateLimit.js";
@@ -37,7 +38,11 @@ function conversationQuery(userId: string, extra?: SQL) {
 type Row = Awaited<ReturnType<typeof conversationQuery>>[number];
 
 async function views(rows: Row[], userId: string) {
-  const thanks = await thanksCounts(rows.map((r) => (r.n.userId === userId ? r.c.helperId : r.n.userId)));
+  const [thanks, accepted] = await Promise.all([
+    thanksCounts(rows.map((r) => (r.n.userId === userId ? r.c.helperId : r.n.userId))),
+    liveAcceptances(rows.map((r) => r.n.id)),
+  ]);
+  const credited = await rewardCredited([...accepted.values()].map((a) => a.id));
   return Promise.all(
     rows.map(async (r) => {
       const [last] = await db
@@ -66,6 +71,13 @@ async function views(rows: Row[], userId: string) {
         thankedAt: r.c.thankedAt,
         thankNote: r.c.thankNote,
         blocked: await isBlocked(r.n.userId, r.c.helperId),
+        // Paid help (null/false when it was never used).
+        rewardDeclined: r.c.rewardDeclined,
+        acceptance: (() => {
+          const a = accepted.get(r.n.id);
+          return a && a.conversationId === r.c.id ? acceptanceView(a, userId, r.c.rewardDeclined, credited.get(a.id) ?? 0) : null;
+        })(),
+        needHasHelper: accepted.has(r.n.id),
         createdAt: r.c.createdAt,
       };
     }),
@@ -103,10 +115,12 @@ export async function openConversation(o: {
   senderId: string;
   message: string;
   log: FastifyBaseLogger;
+  /** Helper's "I'm helping for free" choice; undefined leaves it as is. */
+  declineReward?: boolean;
 }) {
   const [created] = await db
     .insert(conversations)
-    .values({ needId: o.need.id, helperId: o.helperId, helperFlightNumbers: o.helperFlightNumbers })
+    .values({ needId: o.need.id, helperId: o.helperId, helperFlightNumbers: o.helperFlightNumbers, rewardDeclined: o.declineReward ?? false })
     .onConflictDoNothing({ target: [conversations.needId, conversations.helperId] })
     .returning({ id: conversations.id });
   const [conv] = created
@@ -117,6 +131,7 @@ export async function openConversation(o: {
         .where(and(eq(conversations.needId, o.need.id), eq(conversations.helperId, o.helperId)))
         .limit(1);
   await post(conv.id, o.senderId, o.message);
+  if (!created && o.declineReward !== undefined) await setRewardChoice(conv.id, o.declineReward);
 
   if (created) {
     const recipientId = o.senderId === o.helperId ? o.need.userId : o.helperId;
@@ -146,6 +161,14 @@ export async function openConversation(o: {
   return { conversation: await viewOne(await load(conv.id, o.senderId), o.senderId), created: Boolean(created) };
 }
 
+/** The helper's "helping for free" choice: locked once the reward is released or the trip resolved. */
+async function setRewardChoice(conversationId: string, declined: boolean) {
+  const [c] = await db.select({ needId: conversations.needId }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  const a = (await liveAcceptances([c.needId])).get(c.needId);
+  if (a && a.conversationId === conversationId && (a.outcome || a.rewardReleasedAt)) throw conflict("reward_released");
+  await db.update(conversations).set({ rewardDeclined: declined }).where(eq(conversations.id, conversationId));
+}
+
 export async function conversationRoutes(fastify: FastifyInstance) {
   await registerRateLimit(fastify);
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -157,7 +180,10 @@ export async function conversationRoutes(fastify: FastifyInstance) {
     "/needs/:id/reach-out",
     {
       config: perUser(30),
-      schema: { params, body: z.object({ message: body, myFlightNumbers: z.array(z.string().trim().max(10)).max(4).optional() }) },
+      schema: {
+        params,
+        body: z.object({ message: body, myFlightNumbers: z.array(z.string().trim().max(10)).max(4).optional(), declineReward: z.boolean().optional() }),
+      },
     },
     async (req, reply) => {
       const userId = req.userId!;
@@ -173,6 +199,7 @@ export async function conversationRoutes(fastify: FastifyInstance) {
         senderId: userId,
         message: req.body.message,
         log: req.log,
+        declineReward: req.body.declineReward,
       });
       return reply.code(created ? 201 : 200).send(conversation);
     },
@@ -236,4 +263,34 @@ export async function conversationRoutes(fastify: FastifyInstance) {
       return viewOne(await load(r.c.id, req.userId!), req.userId!);
     },
   );
+
+  // ---- paid help (api/ROUTES.md "Paid help") ----
+
+  // The poster accepts this conversation's helper: $10 by card (minus credit).
+  app.post("/conversations/:id/accept", { config: perUser(20), schema: { params } }, async (req) => {
+    const r = await load(req.params.id, req.userId!);
+    if (r.n.userId !== req.userId) throw notFound();
+    const { checkoutUrl } = await acceptHelper({ conversationId: r.c.id, posterId: req.userId!, log: req.log });
+    return { checkoutUrl, conversation: await viewOne(await load(r.c.id, req.userId!), req.userId!) };
+  });
+
+  // The helper's "I'm helping for free" switch.
+  app.put("/conversations/:id/reward", { schema: { params, body: z.object({ declined: z.boolean() }) } }, async (req) => {
+    const r = await load(req.params.id, req.userId!);
+    if (r.c.helperId !== req.userId) throw notFound();
+    await setRewardChoice(r.c.id, req.body.declined);
+    return viewOne(await load(r.c.id, req.userId!), req.userId!);
+  });
+
+  // "Did they help?" answered in the app (the email links use POST /feedback).
+  app.post("/conversations/:id/outcome", { schema: { params, body: z.object({ helped: z.boolean() }) } }, async (req) => {
+    const r = await load(req.params.id, req.userId!);
+    if (r.n.userId !== req.userId) throw notFound();
+    const a = (await liveAcceptances([r.n.id])).get(r.n.id);
+    if (!a || a.conversationId !== r.c.id || a.status !== "confirmed") throw conflict("not_accepted");
+    if (a.outcome) throw conflict("already_answered");
+    if (!a.feedbackDueAt || a.feedbackDueAt.getTime() > Date.now()) throw conflict("too_early");
+    if (!(await resolveOutcome(a.id, req.body.helped ? "helped" : "no_show", "poster", req.log))) throw conflict("already_answered");
+    return viewOne(await load(r.c.id, req.userId!), req.userId!);
+  });
 }

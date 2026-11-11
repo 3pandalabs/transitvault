@@ -35,6 +35,20 @@ const schema = z.object({
   // Only with it is X-Client-IP trusted for rate-limit keys. Optional.
   INTERNAL_SHARED_SECRET: optional,
 
+  // Paid help (api/ROUTES.md "Paid help"). OFF unless PAYMENTS_ENABLED is true
+  // AND both Stripe values are set; otherwise the app is the free board as
+  // before. STRIPE_API_BASE is for local mocks only.
+  PAYMENTS_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => ["1", "true", "yes", "on"].includes((v ?? "").trim().toLowerCase())),
+  STRIPE_SECRET_KEY: optional,
+  STRIPE_WEBHOOK_SECRET: optional,
+  STRIPE_API_BASE: z.string().url().default("https://api.stripe.com"),
+  // Ops-only actions (POST /ops/...), e.g. a card refund on request. Bearer
+  // token; unset → those routes answer 503. Never shared with the web.
+  OPS_TOKEN: optional,
+
   GIT_COMMIT: optional,
   SOURCE_COMMIT: optional,
 });
@@ -52,4 +66,7 @@ export const env = {
   CORS_ORIGINS: [e.WEB_ORIGIN, ...e.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)],
   // Coolify injects SOURCE_COMMIT at runtime; GIT_COMMIT is a manual override.
   GIT_COMMIT: e.SOURCE_COMMIT || e.GIT_COMMIT || "unknown",
+  // A half-configured flag stays off (logged once at boot by lib/payments.ts).
+  PAYMENTS_ENABLED: e.PAYMENTS_ENABLED && Boolean(e.STRIPE_SECRET_KEY && e.STRIPE_WEBHOOK_SECRET),
+  PAYMENTS_FLAG_SET: e.PAYMENTS_ENABLED,
 };
