@@ -14,6 +14,8 @@ import { meRoutes } from "./routes/me.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { needRoutes } from "./routes/needs.js";
 import { safetyRoutes } from "./routes/safety.js";
+import { paymentRoutes } from "./routes/payments.js";
+import { logPaymentsMode, startPaidHelpSweep } from "./lib/payments.js";
 
 const app = Fastify({
   // Paths only: query strings never reach the logs.
@@ -63,8 +65,11 @@ await app.register(flightRoutes);
 await app.register(conversationRoutes);
 await app.register(safetyRoutes);
 await app.register(metricsRoutes);
+await app.register(paymentRoutes);
 
 startNudges(app.log);
+logPaymentsMode(app.log);
+startPaidHelpSweep(app.log);
 
 app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

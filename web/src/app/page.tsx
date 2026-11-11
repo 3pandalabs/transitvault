@@ -1,6 +1,7 @@
 import { MessageCircle, PlaneTakeoff, Search, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { Backdrop } from "@/components/Backdrop";
+import { PaidHelpFaq } from "@/components/PaidHelp";
 import { Logo } from "@/components/Wordmark";
 
 const STEPS = [
@@ -80,6 +81,8 @@ export default function Landing() {
             message.
           </p>
         </section>
+
+        <PaidHelpFaq />
       </main>
     </div>
   );

@@ -11,6 +11,7 @@ import { LegsList, HiddenNotice, PersonLine, ThanksBadge, travelerLine } from "@
 import { normFlight } from "@/components/LegsEditor";
 import { BlockButton, ReportButton } from "@/components/Safety";
 import { ShareNeed } from "@/components/ShareNeed";
+import { FreeHelpCheckbox, HelperTerms, usePaymentsConfig } from "@/components/PaidHelp";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
@@ -109,7 +110,7 @@ function OwnerPanel({ need, onChange, justPosted }: { need: Need; onChange: (n: 
                 <XCircle /> Close
               </Button>
             </>
-          ) : (
+          ) : need.acceptedHelper?.status === "confirmed" ? null : (
             <Button variant="outline" onClick={() => setStatus("open")} disabled={act.busy}>
               <RotateCcw /> Reopen
             </Button>
@@ -118,6 +119,15 @@ function OwnerPanel({ need, onChange, justPosted }: { need: Need; onChange: (n: 
             <Pencil /> Edit
           </Link>
         </div>
+        {need.acceptedHelper ? (
+          <p className="mt-3 text-sm">
+            <Link href={`/messages/${need.acceptedHelper.conversationId}`} className="font-medium text-emerald-700 underline">
+              {need.acceptedHelper.status === "confirmed"
+                ? `Helper confirmed: ${need.acceptedHelper.firstName}`
+                : `Finishing payment to accept ${need.acceptedHelper.firstName}`}
+            </Link>
+          </p>
+        ) : null}
         <p className="mt-3 text-sm text-fg-muted">
           {need.status === "open"
             ? "Open needs are shown on the board. Mark it as found once someone is travelling with them."
@@ -173,6 +183,8 @@ function ReachOutPanel({ need }: { need: Need }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [flights, setFlights] = useState<string[]>(need.flightNumbers.slice(0, 1));
+  const [free, setFree] = useState(false);
+  const payments = usePaymentsConfig();
   const send = useAction();
 
   if (need.myConversationId) {
@@ -199,7 +211,11 @@ function ReachOutPanel({ need }: { need: Need }) {
     e.preventDefault();
     void send.run(async () => {
       if (!message.trim()) throw new Error("Write a short message first.");
-      const c = await reachOut(need.id, { message: message.trim(), myFlightNumbers: flights.length ? flights : undefined });
+      const c = await reachOut(need.id, {
+        message: message.trim(),
+        myFlightNumbers: flights.length ? flights : undefined,
+        declineReward: payments?.enabled ? free : undefined,
+      });
       router.push(`/messages/${c.id}`);
     }, errorMessage);
   }
@@ -221,10 +237,12 @@ function ReachOutPanel({ need }: { need: Need }) {
             onChange={(e) => setMessage(e.target.value)}
           />
         </Field>
+        {payments?.enabled ? <FreeHelpCheckbox config={payments} checked={free} onChange={setFree} /> : null}
         <ErrorText>{send.error}</ErrorText>
         <Button type="submit" disabled={send.busy}>
           <MessageCircle /> {send.busy ? "Sending…" : "Send message"}
         </Button>
+        {payments?.enabled ? <HelperTerms /> : null}
       </form>
     </Panel>
   );

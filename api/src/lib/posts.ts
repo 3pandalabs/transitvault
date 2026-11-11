@@ -1,6 +1,6 @@
 import { and, arrayOverlaps, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { conversations, flightPosts, needs, users } from "../db/schema.js";
+import { conversations, flightPosts, helperAcceptances, needs, users } from "../db/schema.js";
 import { invalid } from "./errors.js";
 import { deriveRoute, LegError, type LegInput } from "./legs.js";
 import { matchReason } from "./match.js";
@@ -49,7 +49,7 @@ export async function needSummaries(rows: Row<Need>[], viewerId: string) {
   const ids = rows.map((r) => r.post.id);
   const mineIds = rows.filter((r) => r.post.userId === viewerId).map((r) => r.post.id);
   const othersIds = ids.filter((id) => !mineIds.includes(id));
-  const [counts, convs, thanks] = await Promise.all([
+  const [counts, convs, thanks, accepted] = await Promise.all([
     mineIds.length
       ? db
           .select({ needId: conversations.needId, n: sql<number>`count(*)::int` })
@@ -64,7 +64,16 @@ export async function needSummaries(rows: Row<Need>[], viewerId: string) {
           .where(and(inArray(conversations.needId, othersIds), eq(conversations.helperId, viewerId)))
       : [],
     thanksCounts(rows.map((r) => r.post.userId)),
+    // Paid help: the owner's accepted (or being-paid-for) helper.
+    mineIds.length
+      ? db
+          .select({ needId: helperAcceptances.needId, conversationId: helperAcceptances.conversationId, status: helperAcceptances.status, name: users.name })
+          .from(helperAcceptances)
+          .innerJoin(users, eq(users.id, helperAcceptances.helperId))
+          .where(and(inArray(helperAcceptances.needId, mineIds), ne(helperAcceptances.status, "cancelled")))
+      : [],
   ]);
+  const acceptedBy = new Map(accepted.map((a) => [a.needId, { conversationId: a.conversationId, status: a.status, firstName: firstName(a.name) }]));
   const countBy = new Map(counts.map((c) => [c.needId, c.n]));
   const convBy = new Map(convs.map((c) => [c.needId, c.id]));
   return rows.map(({ post: n, posterName }) => {
@@ -81,6 +90,7 @@ export async function needSummaries(rows: Row<Need>[], viewerId: string) {
       hidden: mine && n.hiddenAt !== null,
       responseCount: mine ? (countBy.get(n.id) ?? 0) : 0,
       myConversationId: mine ? null : (convBy.get(n.id) ?? null),
+      acceptedHelper: mine ? (acceptedBy.get(n.id) ?? null) : null,
       createdAt: n.createdAt,
     };
   });

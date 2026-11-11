@@ -2,13 +2,13 @@
 
 Source of truth between `api/` and `web/`. Change this file first, then the code.
 
-Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → Chicago alone, connecting in Frankfurt, needs a companion") with the flight details. Other signed-in users browse the needs, and anyone on a matching flight reaches out with a message, which opens a private conversation. No money, no uploads, no verification.
+Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → Chicago alone, connecting in Frankfurt, needs a companion") with the flight details. Other signed-in users browse the needs, and anyone on a matching flight reaches out with a message, which opens a private conversation. No uploads, no verification. Money appears only in the optional [paid help](#paid-help) step (off unless configured).
 
 - Base URL: `https://api.transitvault.3pandalabs.com` (dev `http://localhost:8080`). No `/api` prefix.
 - JSON everywhere. Errors: `{ "error": "<message or code>", "code"?: "<DOMAIN_CODE>" }`.
 - Auth: `Authorization: Bearer <accessToken>` (15-min JWT). Refresh tokens are opaque `<sessionId>.<secret>` and rotate on use.
 - Airports are IATA codes (`^[A-Z]{3}$`). Flight numbers are normalised to `^[A-Z0-9]{2}[0-9]{1,4}[A-Z]?$` (e.g. `AI127`, `LH755`).
-- Everything except `/health`, `/metrics` and `/auth/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
+- Everything except `/health`, `/metrics`, `/auth/*`, `/public/*`, `/payments/config`, `/feedback`, `/stripe/webhook` and `/ops/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
 - 404 (not 403) for a conversation the caller is not part of.
 
 ## Health and ops
@@ -65,17 +65,17 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 
 `Leg = { flightNumber, from, to, departsAt, arrivesAt }`. Times are the **airport-local wall-clock** printed on the ticket, encoded `YYYY-MM-DDTHH:mm:00Z` where the `Z` does not mean UTC. Never convert them by timezone. Legs must be contiguous (`legs[n].to = legs[n+1].from`). A leg may "arrive before it departs" (westbound across the date line), so only a span outside (−24 h, +36 h] is rejected. The server derives `origin`, `destination`, `layovers`, `flightNumbers` and `travelDate` (the first leg's local departure date).
 
-`NeedSummary = { id, travelerLabel, travelerAge, languages, travelDate, origin, destination, layovers, flightNumbers, legs, status, postedBy: { id, firstName, thanksCount }, mine: boolean, hidden: boolean, responseCount (0 unless mine), myConversationId: string|null, createdAt }`. `myConversationId` is the caller's conversation about this need if they have reached out (always null for the owner); the board shows a "You responded" marker from it.
+`NeedSummary = { id, travelerLabel, travelerAge, languages, travelDate, origin, destination, layovers, flightNumbers, legs, status, postedBy: { id, firstName, thanksCount }, mine: boolean, hidden: boolean, responseCount (0 unless mine), myConversationId: string|null, acceptedHelper: { conversationId, status: "pending_payment"|"confirmed", firstName } | null (owner only, see [paid help](#paid-help)), createdAt }`. `myConversationId` is the caller's conversation about this need if they have reached out (always null for the owner); the board shows a "You responded" marker from it.
 
 `Need = NeedSummary & { assistance, notes }`.
 
-Need `status`: `open` (shown on the board) → `found` (the poster found a companion) or `closed` (no longer needed). The owner can reopen. Only `open`, non-hidden needs from people you haven't blocked (or who haven't blocked you) appear in `GET /needs` and accept new messages to reach out.
+Need `status`: `open` (shown on the board) → `found` (the poster found a companion) or `closed` (no longer needed). The owner can reopen, except once a paid helper is confirmed (409 `helper_confirmed`; editing `legs` is then 409 `helper_confirmed_legs_locked`). Only `open`, non-hidden needs from people you haven't blocked (or who haven't blocked you) appear in `GET /needs` and accept new messages to reach out.
 
 ## Reaching out (conversations)
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| POST | `/needs/:id/reach-out` | `{ message (1–2000), myFlightNumbers?: string[] (≤ 4) }` | 201 `Conversation`. Re-sending returns the existing conversation (200) with the message appended. 409 `own_need`, 409 `need_not_open`. |
+| POST | `/needs/:id/reach-out` | `{ message (1–2000), myFlightNumbers?: string[] (≤ 4), declineReward?: boolean }` | 201 `Conversation`. Re-sending returns the existing conversation (200) with the message appended. 409 `own_need`, 409 `need_not_open`. |
 | GET | `/conversations` | — | `ConversationSummary[]`, most recent message first |
 | GET | `/conversations/:id` | — | `Conversation` |
 | GET | `/conversations/:id/messages` | — | `Message[]`, oldest first (last 500) |
@@ -83,7 +83,7 @@ Need `status`: `open` (shown on the board) → `found` (the poster found a compa
 
 One conversation per (need, helper). The poster gets an email when someone reaches out (fail-soft, never blocks the request).
 
-`ConversationSummary = { id, need: { id, travelerLabel, origin, destination, travelDate, flightNumbers, status }, role: "poster"|"helper", otherParty: { id, firstName, thanksCount }, lastMessage: { body, at, mine } | null, helperFlightNumbers, thankedAt: string|null, thankNote: string|null, blocked: boolean, createdAt }`
+`ConversationSummary = { id, need: { id, travelerLabel, origin, destination, travelDate, flightNumbers, status }, role: "poster"|"helper", otherParty: { id, firstName, thanksCount }, lastMessage: { body, at, mine } | null, helperFlightNumbers, thankedAt: string|null, thankNote: string|null, blocked: boolean, rewardDeclined: boolean, acceptance: Acceptance | null, needHasHelper: boolean, createdAt }`
 
 `Conversation = ConversationSummary`. Phone numbers and emails are never sent: people share contact details in the conversation when they choose to. `blocked` is true when either party has blocked the other; sending is then refused.
 
@@ -94,6 +94,36 @@ One conversation per (need, helper). The poster gets an email when someone reach
 | POST | `/conversations/:id/thanks` | `{ note? (≤ 500) }` | `Conversation`. Poster only, once per conversation (409 `already_thanked`). The helper gets an email. |
 
 `thanksCount` is how many families have thanked that person. It's shown next to their first name wherever they appear.
+
+## Paid help
+
+Optional and **off by default**: it's on only when `PAYMENTS_ENABLED=true` **and** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are set. Off, `accept` answers 409 `payments_disabled`, the webhook 503, and the web hides every paid-help control, so the board is exactly the free flow above. Posting and reaching out are always free.
+
+1. **Accept.** In a conversation the poster accepts that helper. One live (pending or confirmed) helper per need. Fee: **$10 per trip**. The poster's own TransitVault credit is applied first (partial allowed) and the rest is charged by card through **Stripe Checkout** (hosted page, 30-minute expiry). If credit covers it all, Stripe is skipped and the helper is confirmed at once.
+2. **Confirm.** Stripe's `checkout.session.completed` webhook (signature-verified) confirms the acceptance. The need becomes `found` and both sides get an email. `checkout.session.expired`, or a pending acceptance older than 2 h (hourly sweep), cancels it and gives back any credit it used.
+3. **Did they help?** The hourly sweep emails the poster 4 h after the last leg's real landing time: "Did <helper> help?" with Yes / No links to `/feedback?token=…&answer=…` on the web (signed, single-use, sha256-hashed at rest; the page records nothing until a button is pressed, so link scanners can't answer). The poster can also answer in the conversation once that time has passed.
+   - **Yes, or no answer within 48 h of the email**: the helper gets **$5 TransitVault credit**, unless they chose "I'm helping for free".
+   - **No (didn't show)**: the full $10 fee comes back to the poster as **TransitVault credit**, not a card refund (Stripe keeps its fee on refunds). No helper credit, and the helper's `strike_count` goes up by one. A card refund of the cash part is **ops-only, on request** (`POST /ops/acceptances/:id/card-refund`): it takes that amount back out of the poster's credit (`card_refund`, once per acceptance, so it can't be refunded twice) and refunds the card via Stripe. Refused if the poster has already spent the credit.
+
+**Credit** is a ledger (`credit_entries`: user, signed amount in cents, reason, need, acceptance); the balance is the sum. It isn't cash and can't be withdrawn: it only comes off the user's own future fees. Reasons: `helper_reward` (+500), `fee_applied` (−credit used), `fee_restored` (+credit used, cancelled checkout), `no_show_refund` (+1000), `card_refund` (−cash part, ops refund). Each happens at most once per acceptance.
+
+**Landing time.** Leg times are airport-local wall-clock without an offset (see Needs). For this one purpose the last leg's `arrivesAt` is read in the arrival airport's IANA zone, from a built-in table of common airports (`lib/landing.ts`, DST-aware). An airport not in the table falls back to the latest possible real instant (wall-clock read as UTC−12), so we never ask before landing; the ask is then at most ~26 h late. Stored legs are never converted.
+
+**Copy.** Wherever money shows, the web says the helper is a fellow traveller thanked with credit, not a hired escort or service, and that TransitVault doesn't provide assistance services.
+
+| Method | Path | Auth | Body | Result |
+|---|---|---|---|---|
+| GET | `/payments/config` | — | — | `{ enabled, feeCents: 1000, rewardCents: 500, currency: "usd" }` |
+| GET | `/me/credits` | user | — | `{ balanceCents, entries: { id, amountCents, reason, needId, createdAt }[] }` (last 50) |
+| POST | `/conversations/:id/accept` | poster | — | `{ checkoutUrl: string\|null, conversation: Conversation }`. Redirect to `checkoutUrl` when set. Accepting again while that checkout is open returns the same URL. 409 `payments_disabled`, `need_not_open` (closed), `helper_already_confirmed`, `acceptance_pending` (another helper's checkout is open); 403 `blocked`; 503 `payment_unavailable` (Stripe failed: nothing charged, credit restored). |
+| PUT | `/conversations/:id/reward` | helper | `{ declined: boolean }` | `Conversation`. "I'm helping for free". 409 `reward_released` once the trip is resolved. |
+| POST | `/conversations/:id/outcome` | poster | `{ helped: boolean }` | `Conversation`. 409 `not_accepted`, `too_early` (before landing + 4 h), `already_answered`. |
+| GET | `/feedback?token=` | token | — | `{ helperFirstName, travelerLabel, origin, destination, travelDate, outcome, conversationId }`; 404 `invalid_or_expired_token`. |
+| POST | `/feedback` | token | `{ token, helped: boolean }` | Same shape; 409 `already_answered`. |
+| POST | `/stripe/webhook` | Stripe signature | raw Stripe event | `{ received: true, result }`. 400 `invalid_signature`; 503 when `STRIPE_WEBHOOK_SECRET` is unset. Handles `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.expired`; other events are ignored. Replays are no-ops. |
+| POST | `/ops/acceptances/:id/card-refund` | `Bearer OPS_TOKEN` | — | `{ id, refundedCents, stripeRefundId, refundedAt }`. 409 `not_a_no_show`, `nothing_paid_by_card`, `already_refunded`, `credit_already_spent`; 503 `ops_disabled` (no `OPS_TOKEN`) or `refund_failed` (credit put back). |
+
+`Acceptance = { id, status: "pending_payment"|"confirmed", feeCents, creditAppliedCents, cashCents, checkoutUrl (poster, while pending), confirmedAt, landsAt, feedbackDueAt, canAnswer (poster), outcome: "helped"|"no_show"|null, outcomeAt, rewardDeclined, rewardReleasedAt, rewardCreditedCents, refundedAt }`. The payment fields (`creditAppliedCents`, `cashCents`, `checkoutUrl`, `refundedAt`) are null for the helper.
 
 ## Sharing a need (public preview)
 
@@ -145,6 +175,8 @@ A traveller posts their own flight once and offers to help. The matching works i
 Once an hour the API emails the poster of every need that is still `open` the day after its travel date: "Did you find a companion? Mark it found or close it". Each need gets this at most once (`needs.nudged_at`).
 
 ## Rate limits
+
+`POST /conversations/:id/accept` 20/hour per user. `/feedback` and `/ops/*` 30/min per IP.
 
 Auth routes as BorrowVault (per IP + per email + global ceiling). `POST /needs` and `POST /flights` 20/hour per user. `POST /needs/:id/reach-out` and `POST /flights/:id/contact` 30/hour per user. Messages 120/hour per user. Reports 20/hour per user. `GET /public/needs/:id` 120/min per IP.
 

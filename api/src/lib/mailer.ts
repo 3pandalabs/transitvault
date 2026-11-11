@@ -123,6 +123,25 @@ export function actionMail(to: string, subject: string, text: string, buttonLabe
   };
 }
 
+/** One paragraph + several buttons (e.g. Yes / No), each with its raw URL below. */
+export function choiceMail(to: string, subject: string, text: string, choices: { label: string; url: string }[], footer: string): Mail {
+  const btn = (c: { label: string; url: string }, i: number) =>
+    `<a href="${esc(c.url)}" style="background:${i === 0 ? "#047857" : "#ffffff"};color:${i === 0 ? "#ffffff" : "#1f2937"};border:1px solid #047857;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;display:inline-block;margin:0 8px 8px 0;">${esc(c.label)}</a>`;
+  return {
+    to,
+    subject,
+    text: `${text}\n\n${choices.map((c) => `${c.label}:\n${c.url}`).join("\n\n")}\n\n${footer}`,
+    html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:520px;">
+  <p style="font-size:15px;line-height:1.6;">${esc(text)}</p>
+  <p style="margin:24px 0;">${choices.map(btn).join("")}</p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;">Buttons not working? Copy a link into your browser:<br>${choices
+    .map((c) => `${esc(c.label)}: <span style="word-break:break-all;">${esc(c.url)}</span>`)
+    .join("<br>")}</p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;">${esc(footer)}</p>
+</div>`,
+  };
+}
+
 /** Plain notification: one paragraph + optional link. Fail-soft like sendMail. */
 export function simpleMail(to: string, subject: string, text: string, link?: string): Mail {
   const url = link ? `${env.WEB_ORIGIN}${link}` : null;

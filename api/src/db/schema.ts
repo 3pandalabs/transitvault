@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, char, check, date, index, jsonb, pgEnum, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, char, check, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // TransitVault Phase 1: a needs board (api/ROUTES.md). Someone posts a need
 // for a parent flying alone; someone on a matching flight reaches out, which
@@ -15,6 +15,9 @@ export const needStatus = pgEnum("need_status", ["open", "found", "closed"]);
 export const flightStatus = pgEnum("flight_status", ["open", "closed"]);
 export const reportTarget = pgEnum("report_target", ["need", "flight", "user"]);
 export const reportReason = pgEnum("report_reason", ["spam", "inappropriate", "scam", "other"]);
+export const acceptanceStatus = pgEnum("acceptance_status", ["pending_payment", "confirmed", "cancelled"]);
+export const acceptanceOutcome = pgEnum("acceptance_outcome", ["helped", "no_show"]);
+export const creditReason = pgEnum("credit_reason", ["helper_reward", "fee_applied", "fee_restored", "no_show_refund", "card_refund"]);
 
 // ---------------------------------------------------------------------------
 // Users & auth
@@ -29,6 +32,9 @@ export const users = pgTable("users", {
   // Match alert emails (api/ROUTES.md "Alerts"). Reach-out and nudge mails
   // are about the user's own posts and always go out.
   alertsEnabled: boolean("alerts_enabled").notNull().default(true),
+  // Paid help: times a poster answered "No, they didn't show" about this user
+  // as their accepted helper (api/ROUTES.md "Paid help").
+  strikeCount: integer("strike_count").notNull().default(0),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
@@ -123,6 +129,9 @@ export const conversations = pgTable(
     // The poster's thank-you, once (POST /conversations/:id/thanks).
     thankedAt: ts("thanked_at"),
     thankNote: text("thank_note"),
+    // Paid help: the helper is "helping for free" and wants no thank-you
+    // credit. Changeable until the reward is released.
+    rewardDeclined: boolean("reward_declined").notNull().default(false),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("conversations_need_helper").on(t.needId, t.helperId), index("conversations_helper").on(t.helperId)],
@@ -233,5 +242,90 @@ export const reports = pgTable(
   (t) => [
     uniqueIndex("reports_once").on(t.reporterId, t.targetType, t.targetId),
     index("reports_target").on(t.targetType, t.targetId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Paid help (api/ROUTES.md "Paid help"). The poster accepts one helper per
+// need and pays a $10 fee (card via Stripe Checkout, minus their own credit).
+// After the trip the helper gets a $5 thank-you credit, unless they declined
+// it or the poster reports a no-show (then the fee is refunded).
+// ---------------------------------------------------------------------------
+
+export const helperAcceptances = pgTable(
+  "helper_acceptances",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    needId: uuid("need_id")
+      .notNull()
+      .references(() => needs.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    posterId: uuid("poster_id")
+      .notNull()
+      .references(() => users.id),
+    helperId: uuid("helper_id")
+      .notNull()
+      .references(() => users.id),
+    status: acceptanceStatus("status").notNull().default("pending_payment"),
+    // fee = credit applied + cash charged by card.
+    feeCents: integer("fee_cents").notNull(),
+    creditAppliedCents: integer("credit_applied_cents").notNull().default(0),
+    cashCents: integer("cash_cents").notNull(),
+    stripeSessionId: text("stripe_session_id"),
+    checkoutUrl: text("checkout_url"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    paidAt: ts("paid_at"),
+    confirmedAt: ts("confirmed_at"),
+    // Estimated real (UTC) landing of the last leg, and when to ask the
+    // poster "did they help?" (lib/landing.ts).
+    landsAt: ts("lands_at"),
+    feedbackDueAt: ts("feedback_due_at"),
+    feedbackSentAt: ts("feedback_sent_at"),
+    // sha256 of the single-use secret in the emailed Yes/No links.
+    feedbackTokenHash: text("feedback_token_hash"),
+    outcome: acceptanceOutcome("outcome"),
+    outcomeSource: text("outcome_source"), // "poster" | "timeout"
+    outcomeAt: ts("outcome_at"),
+    rewardReleasedAt: ts("reward_released_at"),
+    refundedAt: ts("refunded_at"),
+    stripeRefundId: text("stripe_refund_id"),
+    refundError: text("refund_error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // v1: one live (pending or confirmed) helper per need.
+    uniqueIndex("helper_acceptances_one_per_need").on(t.needId).where(sql`status <> 'cancelled'`),
+    index("helper_acceptances_conversation").on(t.conversationId),
+    index("helper_acceptances_status").on(t.status),
+    uniqueIndex("helper_acceptances_session").on(t.stripeSessionId),
+    check(
+      "helper_acceptances_fee_split",
+      sql`${t.creditAppliedCents} >= 0 AND ${t.cashCents} >= 0 AND ${t.creditAppliedCents} + ${t.cashCents} = ${t.feeCents}`,
+    ),
+  ],
+);
+
+/** TransitVault credit ledger: balance = sum(amount_cents). Credit is not cash. */
+export const creditEntries = pgTable(
+  "credit_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    amountCents: integer("amount_cents").notNull(),
+    reason: creditReason("reason").notNull(),
+    needId: uuid("need_id").references(() => needs.id),
+    acceptanceId: uuid("acceptance_id").references(() => helperAcceptances.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("credit_entries_user").on(t.userId, t.createdAt),
+    // Each kind of entry at most once per acceptance (idempotent sweeps/webhooks).
+    uniqueIndex("credit_entries_once").on(t.acceptanceId, t.reason),
+    check("credit_entries_nonzero", sql`${t.amountCents} <> 0`),
   ],
 );

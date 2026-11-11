@@ -7,18 +7,20 @@ import { useState } from "react";
 import { Checklist } from "@/components/Checklist";
 import { ErrorText, Field, LoadError, Loading, NeedStatusBadge, PageHeader, Panel, PanelTitle } from "@/components/common";
 import { Chat } from "@/components/Chat";
+import { PaidHelpPanel } from "@/components/PaidHelp";
 import { ThanksBadge } from "@/components/needs";
 import { BlockButton, ReportButton } from "@/components/Safety";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { errorMessage, getConversation, sayThanks } from "@/lib/api";
 import { date } from "@/lib/format";
-import { useAction, useAsync } from "@/lib/hooks";
+import { useAction, useAsync, useQueryParam } from "@/lib/hooks";
 import type { Conversation } from "@/lib/types";
 
 export default function Thread() {
   const { id } = useParams<{ id: string }>();
   const conv = useAsync(() => getConversation(id), `conv:${id}`);
+  const paid = useQueryParam("paid");
 
   if (conv.error) return <LoadError error={conv.error} onRetry={conv.reload} />;
   if (!conv.data) return <Loading />;
@@ -52,6 +54,8 @@ export default function Thread() {
         <ShieldAlert className="size-4 shrink-0" />
         <p>Share phone numbers or meeting details only when you&apos;re comfortable. Never send money or passport details.</p>
       </div>
+
+      <PaidHelpPanel conversation={c} onChange={conv.setData} paid={paid} />
 
       {c.thankedAt ? <ThanksGiven conversation={c} /> : null}
 

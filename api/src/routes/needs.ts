@@ -4,9 +4,9 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import { db } from "../db/index.js";
-import { needs, users } from "../db/schema.js";
+import { helperAcceptances, needs, users } from "../db/schema.js";
 import { alertForNewNeed } from "../lib/alerts.js";
-import { notFound } from "../lib/errors.js";
+import { conflict, notFound } from "../lib/errors.js";
 import { flightSummaries, flightsMatching, needSummaries, publicNeed, routeColumns } from "../lib/posts.js";
 import { blockedWith } from "../lib/social.js";
 import { boardFilters, boardQuery } from "../lib/filters.js";
@@ -116,6 +116,15 @@ export async function needRoutes(fastify: FastifyInstance) {
       { schema: { params, body: needInput.partial().extend({ status: z.enum(["open", "found", "closed"]).optional() }) } },
       async (req) => {
         const { legs, ...rest } = req.body;
+        if (rest.status === "open" || legs) {
+          // A confirmed helper was paid for this trip as it stands (api/ROUTES.md "Paid help").
+          const [a] = await db
+            .select({ id: helperAcceptances.id })
+            .from(helperAcceptances)
+            .where(and(eq(helperAcceptances.needId, req.params.id), eq(helperAcceptances.status, "confirmed")))
+            .limit(1);
+          if (a) throw conflict(legs ? "helper_confirmed_legs_locked" : "helper_confirmed");
+        }
         const updated = await db
           .update(needs)
           .set({ ...rest, ...(legs ? routeColumns(legs) : {}), updatedAt: new Date() })
