@@ -172,7 +172,11 @@ A traveller posts their own flight once and offers to help. The matching works i
 
 ## Nudges
 
-Once an hour the API emails the poster of every need that is still `open` the day after its travel date: "Did you find a companion? Mark it found or close it". Each need gets this at most once (`needs.nudged_at`).
+Two hourly, email-only nudges to the poster. Each goes out at most once per need, and a need gets at most one of them.
+
+- **"Sorry, no one offered to help"** (`needs.no_helper_emailed_at`), on the travel day: about **6 hours before the first leg departs**, if the need is still `open`, not hidden, and has **zero conversations** (nobody reached out). Short and kind: sorry no one on these flights offered this time, ask the airline for wheelchair / meet-and-assist service (free on most airlines, book it with the airline at least 48 h ahead), keep the itinerary and a phone number in the traveller's bag, and post again for the next trip. No mention of paid help. The need's status doesn't change. It's sent only while the plane is still on the ground (from 6 h before departure until departure), and not for a need posted less than 6 h before departure (it never had a fair chance; it gets the day-after nudge instead).
+  **Departure time.** The first leg's `departsAt` is read in the origin airport's IANA zone with the same table as the [landing time](#paid-help) (`lib/landing.ts`). An airport not in the table falls back to the **earliest** possible real instant (wall-clock read as UTC+14), so the email is never sent after departure; it then arrives up to ~26 h early in the worst case. Stored legs are never converted.
+- **"Did you find a companion? Mark it found or close it"** (`needs.nudged_at`), the day after the travel date, for a need still `open`. Skipped for a need that already got the "sorry" email, so a need with nobody reaching out gets one email, not two. A need where people did reach out but the poster never accepted anyone or marked it found gets this one.
 
 ## Rate limits
 

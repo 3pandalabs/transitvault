@@ -96,6 +96,8 @@ export const needs = pgTable(
     hiddenAt: ts("hidden_at"),
     // "Did you find a companion?" sent the day after travel.
     nudgedAt: ts("nudged_at"),
+    // "Sorry, no one offered to help" sent ~6 h before departure (zero conversations).
+    noHelperEmailedAt: ts("no_helper_emailed_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },

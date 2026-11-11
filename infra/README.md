@@ -68,3 +68,19 @@ docker compose -f docker-compose.dev.yml up -d postgres
 npm install && npm run db:migrate && npm run dev       # API on :8080
 cd ../web && cp .env.example .env.local && npm install && npm run dev   # :3000
 ```
+
+## Local scenarios (paid help + nudges, end to end)
+
+`cd api && npm run scenarios` drives three scenarios through the real HTTP API and prints a PASS/FAIL table (exit 1 on any failure):
+
+1. Poster accepts a helper, pays $10 (Checkout + signed webhook), the trip lands, the sweep sends "did they help?", the poster clicks Yes → helper has $5 credit; the helper then spends it on their own trip ($5 credit + $5 card).
+2. Same, but the helper chose "I'm helping for free" → no credit, no `helper_reward` entry.
+3. A need nobody reached out about: no email 7 h before departure, exactly one "sorry, no one offered to help" inside the 6 h window, no duplicate, and no day-after nudge. Control: a need with one conversation gets no "sorry" but does get the day-after nudge.
+
+**Prerequisites:** Docker running, `npm ci` done in `api/`, and ports **5438** (Postgres) and **8099** (API) free, so stop the dev DB first (`docker compose -f docker-compose.dev.yml down`), or set `SCENARIOS_PG_PORT` / `SCENARIOS_API_PORT`. No `.env` is needed; the script sets every variable itself.
+
+**What it starts:** a throwaway `postgres:17-alpine` container `transitvault-scenarios-pg` (no named volume), an in-process mock Stripe (Checkout Sessions, Refunds) and mock mail gateway that captures every email (SMTP is forced off, so nothing real is sent, and no real Stripe call is made), and the API (`node --import tsx src/index.ts`) with `PAYMENTS_ENABLED=true` and a local webhook secret. Time is simulated by shifting stored leg / acceptance times in that DB and calling the hourly sweeps directly.
+
+**Cleanup:** always, even on failure: the API process tree is killed and the container is removed with its anonymous volume (`docker rm -f -v`). If the script is killed hard, run `docker rm -f -v transitvault-scenarios-pg`.
+
+**Output:** `api/scenario-report/` (gitignored; `-- --out <dir>` to change it): `index.html` (scenario → checks → PASS/FAIL, balances, the emails) and `emails/*.html`, each email rendered as the user sees it with To/Subject on top.
