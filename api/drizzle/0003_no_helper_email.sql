@@ -1,0 +1,1 @@
+ALTER TABLE "needs" ADD COLUMN IF NOT EXISTS "no_helper_emailed_at" timestamp with time zone;

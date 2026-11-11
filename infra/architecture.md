@@ -14,7 +14,7 @@ Phase 1 deliberately has **no uploads, no verification and no live tracking**. M
 | Mail | SMTP (Gmail app password) → org mailer fallback | "someone reached out", password reset, paid-help mails |
 | Payments (optional) | Stripe Checkout + one webhook, called over HTTPS (no SDK) | only when `PAYMENTS_ENABLED` + keys are set |
 
-There's no Temporal worker and no R2 media bucket. The only timers (stale-need nudge, paid-help sweep) are hourly idempotent DB sweeps inside the API process.
+There's no Temporal worker and no R2 media bucket. The only timers (stale-need nudge, travel-day "no helper" email, paid-help sweep) are hourly idempotent DB sweeps inside the API process.
 
 ```mermaid
 flowchart LR
