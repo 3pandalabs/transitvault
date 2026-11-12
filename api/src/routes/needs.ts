@@ -6,6 +6,7 @@ import { requireAuth } from "../auth/plugin.js";
 import { db } from "../db/index.js";
 import { helperAcceptances, needs, users } from "../db/schema.js";
 import { alertForNewNeed } from "../lib/alerts.js";
+import { airportHelp } from "../lib/assist.js";
 import { conflict, notFound } from "../lib/errors.js";
 import { flightSummaries, flightsMatching, needSummaries, publicNeed, routeColumns } from "../lib/posts.js";
 import { blockedWith } from "../lib/social.js";
@@ -49,7 +50,7 @@ export async function loadNeedFor(id: string, viewerId: string) {
 export async function needDetail(id: string, viewerId: string) {
   const row = await loadNeedFor(id, viewerId);
   const [s] = await needSummaries([row], viewerId);
-  return { ...s, assistance: row.post.assistance, notes: row.post.notes };
+  return { ...s, assistance: row.post.assistance, notes: row.post.notes, airportHelp: airportHelp(row.post, row.post.id) };
 }
 
 export async function needRoutes(fastify: FastifyInstance) {

@@ -59,6 +59,22 @@ It refunds the card part via Stripe and takes the same amount back out of their 
 
 Locally: `stripe listen --forward-to localhost:8080/stripe/webhook` prints a `whsec_…` to use as `STRIPE_WEBHOOK_SECRET`.
 
+## Official airport assistance (data + referral links)
+
+No service, env var or vendor account is needed: the list is a checked-in file, and clicks are logged by the API (`GET /go/assist/:iata` → `assist_clicks` → 302). Contract: `api/ROUTES.md` "Airport assistance". Research, prices, sources and affiliate leads: `infra/airport-assistance-research.md`. Optional env: `PUBLIC_API_URL` (default `https://api.transitvault.3pandalabs.com`) is the base for the email links.
+
+**Add or update an airport.**
+1. Check the service is official (run by the airport, or named/endorsed on the airport's own site), and that the booking URL loads in a browser. If unsure, leave it out: families then see only the free airline line.
+2. Edit `api/src/data/airportAssistance.ts`: `iata`, `airport`, `provider`, `operator`, `authority` (shown as "(paid, <authority>)"), `url`, `covers` (`departure` is used at the origin, `transit` at a layover, `arrival` at the destination), `priceNote` (with currency), and `lastChecked` if it differs from the file's date.
+3. Add or update its row and source in `infra/airport-assistance-research.md`.
+4. `cd api && npm test` (the data test checks keys, https URLs and empty affiliate params), then PR → merge → redeploy `transitvault-api`. The web needs no change: it renders what the API returns.
+
+**Switch on a referral parameter once a deal is signed.**
+1. Get the exact tracking parameter from the provider (e.g. `ref=transitvault`, `utm_source=transitvault&aff=123`). If they give a whole tracking URL instead, put that in `url` and leave `affiliateParam` empty.
+2. Set `affiliateParam: "<param>"` on that entry (no leading `?`/`&` needed; it's appended correctly and kept before any `#fragment`). Update the data test's "no affiliate param yet" expectation for that entry.
+3. Redeploy the API. Check with `curl -sI "https://api.transitvault.3pandalabs.com/go/assist/<IATA>"`: the `location` header carries the parameter.
+4. Referral volume to show a provider: `select iata, provider, count(*), count(distinct need_id) from assist_clicks where created_at > now() - interval '90 days' group by 1, 2 order by 3 desc;` (also `assistClicks` / `assistClicksLast30d` on the admin page via `/metrics`).
+
 ## Local development
 
 ```
@@ -71,7 +87,7 @@ cd ../web && cp .env.example .env.local && npm install && npm run dev   # :3000
 
 ## Local scenarios (paid help + nudges, end to end)
 
-`cd api && npm run scenarios` drives six scenarios through the real HTTP API and prints a PASS/FAIL table (exit 1 on any failure):
+`cd api && npm run scenarios` drives seven scenarios through the real HTTP API and prints a PASS/FAIL table (exit 1 on any failure):
 
 1. Poster accepts a helper, pays $10 (Checkout + signed webhook), the trip lands, the sweep sends "did they help?", the poster clicks Yes → helper has $5 credit; the helper then spends it on their own trip ($5 credit + $5 card).
 2. Same, but the helper chose "I'm helping for free" → no credit, no `helper_reward` entry.
@@ -79,8 +95,9 @@ cd ../web && cp .env.example .env.local && npm install && npm run dev   # :3000
 4. Account deletion: a user with $5 credit, an open need, an "I'm flying" post and two conversations deletes their account → posts gone from the boards and the public preview, the other party still reads the conversation as "Deleted user" but can't message or thank them, credit zeroed by an `account_deleted` entry, the acceptance kept, old token and login refused, password reset and sweeps send nothing, and the email signs up again as a fresh account.
 5. Deletion blocked while paid help is in flight: 409 for both sides while the checkout is open and while the confirmed trip is unresolved; allowed once the family answers.
 6. Contact form: one email to `OPS_EMAIL` with Reply-To = the sender, the signed-in user id included, the honeypot sends nothing, 400 on a bad body, 429 on the 6th request in an hour.
+7. Official airport assistance on DEL → FRA → ORD: the need and public-preview payloads list exactly the airports with entries (not ORD), `GET /go/assist/FRA?need=` logs one `assist_clicks` row and 302s to the provider, a bad need id still redirects, an airport without an entry is 404, and the travel-day "sorry" email carries the airline line + one booking link per airport.
 
-**Prerequisites:** Docker running, `npm ci` done in `api/`, and ports **5438** (Postgres) and **8099** (API) free, so stop the dev DB first (`docker compose -f docker-compose.dev.yml down`), or set `SCENARIOS_PG_PORT` / `SCENARIOS_API_PORT`. No `.env` is needed; the script sets every variable itself.
+**Prerequisites:** Docker running, `npm ci` done in `api/`, and ports **5438** (Postgres) and **8099** (API) free, so stop the dev DB first (`docker compose -f docker-compose.dev.yml down`), or set `SCENARIOS_PG_PORT` / `SCENARIOS_API_PORT`. To run two checkouts side by side (e.g. worktrees), also set `SCENARIOS_CONTAINER` to a different container name, so neither removes the other's database. No `.env` is needed; the script sets every variable itself.
 
 **What it starts:** a throwaway `postgres:17-alpine` container `transitvault-scenarios-pg` (no named volume), an in-process mock Stripe (Checkout Sessions, Refunds) and mock mail gateway that captures every email (SMTP is forced off, so nothing real is sent, and no real Stripe call is made), and the API (`node --import tsx src/index.ts`) with `PAYMENTS_ENABLED=true` and a local webhook secret. Time is simulated by shifting stored leg / acceptance times in that DB and calling the hourly sweeps directly.
 

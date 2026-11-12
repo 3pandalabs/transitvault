@@ -14,6 +14,9 @@ const schema = z.object({
   // The web origin: CORS and links in emails.
   // CORS_ORIGINS adds extra comma-separated origins (local dev, previews).
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
+  // This API's public origin, for absolute links in emails that go through an
+  // API route (the airport-assistance click redirect, /go/assist/:iata).
+  PUBLIC_API_URL: z.string().url().default("https://api.transitvault.3pandalabs.com"),
   CORS_ORIGINS: optional,
 
   // Optional: unset → GET /metrics answers 503 and nothing else changes.

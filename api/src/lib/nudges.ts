@@ -2,6 +2,8 @@ import { and, between, eq, isNull, lt, notExists, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { db } from "../db/index.js";
 import { conversations, needs, users } from "../db/schema.js";
+import { env } from "../env.js";
+import { assistMailBlock } from "./assist.js";
 import { noHelperEmailDue, travelerPhrase } from "./landing.js";
 import { sendMail, simpleMail } from "./mailer.js";
 
@@ -75,7 +77,10 @@ export async function emailNoHelperNeeds(log: FastifyBaseLogger, now = new Date(
   return mails.length;
 }
 
-export function noHelperMail(to: string, n: Pick<typeof needs.$inferSelect, "travelerLabel" | "origin" | "destination" | "flightNumbers" | "travelDate">) {
+export function noHelperMail(
+  to: string,
+  n: Pick<typeof needs.$inferSelect, "id" | "travelerLabel" | "origin" | "destination" | "layovers" | "flightNumbers" | "travelDate">,
+) {
   const who = travelerPhrase(n.travelerLabel);
   return simpleMail(
     to,
@@ -85,6 +90,7 @@ export function noHelperMail(to: string, n: Pick<typeof needs.$inferSelect, "tra
       `and keep a copy of the itinerary and a phone number to call written down in ${who}'s bag. ` +
       `Safe travels. When there's a next trip, post it again on TransitVault and share the link early.`,
     `/needs/new`,
+    assistMailBlock(n, n.id, env.PUBLIC_API_URL),
   );
 }
 

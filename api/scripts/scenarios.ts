@@ -1,4 +1,4 @@
-// End-to-end scenarios for paid help, the poster nudges, account deletion and the contact form, run locally
+// End-to-end scenarios for paid help, the poster nudges, account deletion, the contact form and airport assistance, run locally
 // against the real HTTP API (infra/README.md "Local scenarios").
 //
 //   npm run scenarios                 # report → api/scenario-report/ (gitignored)
@@ -24,12 +24,16 @@ import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import pg from "pg";
+import { AIRPORT_ASSISTANCE } from "../src/data/airportAssistance.js";
+import { assistForRoute, providerUrl } from "../src/lib/assist.js";
 import { signPayload } from "../src/lib/stripe.js";
 
 const API_DIR = resolve(import.meta.dirname, "..");
 const PG_PORT = Number(process.env.SCENARIOS_PG_PORT ?? 5438);
 const API_PORT = Number(process.env.SCENARIOS_API_PORT ?? 8099);
-const CONTAINER = "transitvault-scenarios-pg";
+// Overridable so two checkouts (e.g. worktrees) can run side by side without
+// removing each other's container.
+const CONTAINER = process.env.SCENARIOS_CONTAINER ?? "transitvault-scenarios-pg";
 const outArg = process.argv.indexOf("--out");
 const OUT_DIR = resolve(outArg > 0 ? process.argv[outArg + 1] : join(API_DIR, "scenario-report"));
 const DB_URL = `postgres://transitvault:transitvault@localhost:${PG_PORT}/transitvault`;
@@ -156,6 +160,7 @@ function apiEnv(mockBase: string): NodeJS.ProcessEnv {
     PORT: String(API_PORT),
     JWT_SECRET: "scenarios-jwt-secret-0123456789abcdef",
     WEB_ORIGIN: "http://localhost:3000",
+    PUBLIC_API_URL: API,
     // Mail: SMTP forced off (dotenv never overrides a set var), gateway = the mock.
     SMTP_USER: "",
     SMTP_PASS: "",
@@ -395,7 +400,10 @@ async function scenario3(u5: User, u4: User) {
   const sorry = sorryFor(from);
   check('exactly one "sorry" email, to user5', sorry.length === 1 && sorry[0].to === u5.email, sorry.map((m) => m.to).join(", ") || "none");
   check('it addresses "your mother" and the route', Boolean(sorry[0]?.text.includes("your mother's flights") && sorry[0]?.subject.includes("DEL → ORD")));
-  check("it has the airline-assistance and itinerary tips, no paid-help mention", Boolean(sorry[0] && /meet-and-assist/.test(sorry[0].text) && /48 hours/.test(sorry[0].text) && /itinerary/.test(sorry[0].text) && !/\$|credit|fee|pay/i.test(sorry[0].text)));
+  // The TransitVault paid-help copy must not appear; the airport-assistance block
+  // (after "Open TransitVault", scenario 4) is about third-party services.
+  const sorryBody = sorry[0]?.text.split("\n\nAsk ")[0] ?? "";
+  check("it has the airline-assistance and itinerary tips, no paid-help mention", Boolean(sorry[0] && /meet-and-assist/.test(sorryBody) && /48 hours/.test(sorryBody) && /itinerary/.test(sorryBody) && !/\$|credit|fee|pay/i.test(sorry[0].text)));
   check("control need (1 conversation): no sorry email", !sorry.some((m) => m.text.includes("dad (74)")));
   const st = await call("GET", `/needs/${lonely.id}`, u5.token);
   check("need status unchanged (open)", st.status === "open", st.status);
@@ -616,6 +624,55 @@ async function scenario6(u9: User) {
   check("6th request in the hour → 429 rate_limited", fifth.status === 204 && sixth.status === 429 && sixth.body?.error === "rate_limited", `${fifth.status}, ${sixth.status}`);
 }
 
+async function scenario7(u6: User) {
+  begin("7", "Official airport assistance: DEL → FRA → ORD links, click redirect, and the block in the sorry email");
+  const need = await postNeed(u6, "My mother", Date.now() + 7 * DAY);
+  const expected = assistForRoute(need).map((x) => x.entry.iata);
+  fact(`airports with an official service on DEL → FRA → ORD: ${expected.join(", ") || "none"}`);
+
+  step = "GET /needs/:id and /public/needs/:id";
+  const full = await call("GET", `/needs/${need.id}`, u6.token);
+  const pub = await call("GET", `/public/needs/${need.id}`, null);
+  const got: string[] = (full.airportHelp?.airports ?? []).map((a: { iata: string }) => a.iata);
+  check("need payload lists exactly the route airports that have entries", JSON.stringify(got) === JSON.stringify(expected), got.join(", "));
+  check("FRA (layover) is included, ORD (no official service) is not", got.includes("FRA") && !got.includes("ORD"));
+  const fra = full.airportHelp.airports.find((a: { iata: string }) => a.iata === "FRA");
+  check("FRA links through /go/assist/FRA?need=<id>", fra?.bookPath === `/go/assist/FRA?need=${need.id}`, fra?.bookPath ?? "none");
+  check("airline line names Lufthansa", full.airportHelp.airlines?.[0]?.name === "Lufthansa");
+  check("public preview carries the same airport help", JSON.stringify(pub.airportHelp) === JSON.stringify(full.airportHelp));
+
+  step = "GET /go/assist/FRA (click redirect)";
+  const res = await fetch(`${API}/go/assist/FRA?need=${need.id}`, { redirect: "manual" });
+  const location = res.headers.get("location");
+  check("302 to the provider URL (no affiliate param yet)", res.status === 302 && location === providerUrl(AIRPORT_ASSISTANCE.FRA), `${res.status} ${location}`);
+  const rows = await db!.query("select iata, provider, need_id, user_id from assist_clicks where need_id = $1", [need.id]);
+  check(
+    "one assist_clicks row: iata, provider, need id, no user id",
+    rows.rows.length === 1 && rows.rows[0].iata === "FRA" && rows.rows[0].provider === AIRPORT_ASSISTANCE.FRA.provider && rows.rows[0].user_id === null,
+  );
+  const bad = await fetch(`${API}/go/assist/FRA?need=not-a-uuid`, { redirect: "manual" });
+  const orphan = await db!.query("select count(*)::int as n from assist_clicks where need_id is null");
+  check("a malformed need id still redirects, logged without a need", bad.status === 302 && orphan.rows[0].n === 1, `${bad.status}, ${orphan.rows[0].n}`);
+  const none = await fetch(`${API}/go/assist/ORD`, { redirect: "manual" });
+  check("an airport without an entry is 404", none.status === 404, String(none.status));
+  fact(`click redirect: FRA → ${location}`);
+
+  step = "travel-day sweep (5 h before departure, nobody reached out)";
+  await db!.query("update needs set created_at = now() - interval '3 days' where id = $1", [need.id]);
+  await moveTrip(need.id, Date.now() + 5 * HOUR);
+  const from = mails.length;
+  await sweeps.sweepNudges(quietLog);
+  await settle();
+  const sorry = mailsSince(from).find((m) => m.to === u6.email && m.subject.startsWith("Sorry, no one offered"));
+  check('"sorry" email sent', Boolean(sorry), sorry?.subject ?? "none");
+  check("it has the free airline line", Boolean(sorry?.text.includes("Ask Lufthansa for free wheelchair / special assistance")));
+  check(
+    "one booking line per airport with an entry, via the click redirect",
+    expected.length > 0 && expected.every((i) => sorry?.text.includes(`${API}/go/assist/${i}?need=${need.id}`) && sorry?.html.includes(`/go/assist/${i}?need=${need.id}`)),
+  );
+  check("it labels them third-party paid services", Boolean(sorry?.text.includes("third-party paid services")));
+}
+
 // ---- report --------------------------------------------------------------------------
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -704,6 +761,8 @@ try {
   await scenario5(u3, u4);
   console.log("\nScenario 6");
   await scenario6(u3);
+  console.log("\nScenario 7");
+  await scenario7(u6);
 } catch (err) {
   crashed = err;
   check("harness ran to completion", false, String(err));

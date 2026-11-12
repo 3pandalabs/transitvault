@@ -6,6 +6,7 @@ import { env } from "./env.js";
 import { DomainError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logRedact.js";
 import { recordRequest, startCpuSampler } from "./metrics/collector.js";
+import { assistRoutes } from "./routes/assist.js";
 import { authRoutes } from "./routes/auth.js";
 import { startNudges } from "./lib/nudges.js";
 import { contactRoutes } from "./routes/contact.js";
@@ -68,6 +69,7 @@ await app.register(safetyRoutes);
 await app.register(metricsRoutes);
 await app.register(paymentRoutes);
 await app.register(contactRoutes);
+await app.register(assistRoutes);
 
 startNudges(app.log);
 logPaymentsMode(app.log);

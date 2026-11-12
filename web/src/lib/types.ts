@@ -50,6 +50,7 @@ export type NeedSummary = {
 export type Need = NeedSummary & {
   assistance: string | null;
   notes: string | null;
+  airportHelp: AirportHelp;
 };
 
 export type ConversationSummary = {
@@ -154,7 +155,26 @@ export type PublicNeed = {
   layovers: string[];
   flightNumbers: string[];
   legs: Leg[];
+  airportHelp: AirportHelp;
 };
+
+// ---- official airport assistance (api/ROUTES.md "Airport assistance") ----
+
+export type AirportAssist = {
+  iata: string;
+  role: "origin" | "layover" | "destination";
+  airport: string;
+  provider: string;
+  operator: string;
+  /** "run by the airport", "approved by Heathrow", … */
+  authority: string;
+  covers: ("departure" | "arrival" | "transit")[];
+  priceNote: string;
+  /** Path on the API host: logs the click, then redirects to the provider. */
+  bookPath: string;
+};
+
+export type AirportHelp = { airports: AirportAssist[]; airlines: { code: string; name: string | null }[] };
 
 // ---- "I'm flying" posts ----
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChipsInput, ErrorText, Field, LoadError, Loading, NeedStatusBadge, PageHeader, Panel, PanelTitle } from "@/components/common";
+import { AirportHelpPanel } from "@/components/AirportHelp";
 import { Checklist } from "@/components/Checklist";
 import { ContactFlight } from "@/components/ContactFlight";
 import { LegsList, HiddenNotice, PersonLine, ThanksBadge, travelerLine } from "@/components/needs";
@@ -77,9 +78,9 @@ export default function NeedDetail() {
 
       {n.mine ? <OwnerPanel need={n} onChange={need.setData} justPosted={justPosted} /> : <ReachOutPanel need={n} />}
 
-      {n.mine ? (
-        <Checklist />
-      ) : (
+      {n.mine ? <Checklist help={n.airportHelp} defaultOpen={n.airportHelp.airports.length > 0} /> : <AirportHelpPanel help={n.airportHelp} />}
+
+      {n.mine ? null : (
         <div className="flex flex-wrap items-start gap-2">
           <ReportButton targetType="need" targetId={n.id} label="Report this post" />
           <BlockButton userId={n.postedBy.id} firstName={n.postedBy.firstName} />

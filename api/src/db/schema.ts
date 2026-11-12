@@ -334,3 +334,23 @@ export const creditEntries = pgTable(
     check("credit_entries_nonzero", sql`${t.amountCents} <> 0`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Official airport assistance (api/ROUTES.md "Airport assistance"). One row
+// per outbound click through GET /go/assist/:iata, so the owner can show a
+// provider its referral volume. No PII: the airport, the provider name and,
+// when known, the need and user ids (nulled if either is deleted).
+// ---------------------------------------------------------------------------
+
+export const assistClicks = pgTable(
+  "assist_clicks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    iata: char("iata", { length: 3 }).notNull(),
+    provider: text("provider").notNull(),
+    needId: uuid("need_id").references(() => needs.id, { onDelete: "set null" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("assist_clicks_created").on(t.createdAt), index("assist_clicks_iata").on(t.iata)],
+);

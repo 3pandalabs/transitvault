@@ -8,7 +8,7 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 - JSON everywhere. Errors: `{ "error": "<message or code>", "code"?: "<DOMAIN_CODE>" }`.
 - Auth: `Authorization: Bearer <accessToken>` (15-min JWT). Refresh tokens are opaque `<sessionId>.<secret>` and rotate on use.
 - Airports are IATA codes (`^[A-Z]{3}$`). Flight numbers are normalised to `^[A-Z0-9]{2}[0-9]{1,4}[A-Z]?$` (e.g. `AI127`, `LH755`).
-- Everything except `/health`, `/metrics`, `/auth/*`, `/public/*`, `/payments/config`, `/feedback`, `/contact`, `/stripe/webhook` and `/ops/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
+- Everything except `/health`, `/metrics`, `/auth/*`, `/public/*`, `/payments/config`, `/feedback`, `/contact`, `/stripe/webhook`, `/go/assist/*` and `/ops/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
 - 404 (not 403) for a conversation the caller is not part of.
 
 ## Health and ops
@@ -90,7 +90,7 @@ Afterwards: login with the old email → 401 `invalid_credentials`, refresh → 
 
 `NeedSummary = { id, travelerLabel, travelerAge, languages, travelDate, origin, destination, layovers, flightNumbers, legs, status, postedBy: { id, firstName, thanksCount }, mine: boolean, hidden: boolean, responseCount (0 unless mine), myConversationId: string|null, acceptedHelper: { conversationId, status: "pending_payment"|"confirmed", firstName } | null (owner only, see [paid help](#paid-help)), createdAt }`. `myConversationId` is the caller's conversation about this need if they have reached out (always null for the owner); the board shows a "You responded" marker from it.
 
-`Need = NeedSummary & { assistance, notes }`.
+`Need = NeedSummary & { assistance, notes, airportHelp: AirportHelp }` (see [airport assistance](#airport-assistance)).
 
 Need `status`: `open` (shown on the board) → `found` (the poster found a companion) or `closed` (no longer needed). The owner can reopen, except once a paid helper is confirmed (409 `helper_confirmed`; editing `legs` is then 409 `helper_confirmed_legs_locked`). Only `open`, non-hidden needs from people you haven't blocked (or who haven't blocked you) appear in `GET /needs` and accept new messages to reach out.
 
@@ -154,7 +154,7 @@ Optional and **off by default**: it's on only when `PAYMENTS_ENABLED=true` **and
 |---|---|---|---|
 | GET | `/public/needs/:id` | — | `PublicNeed`, or 404 if the need isn't open or is hidden. 120/min per IP. |
 
-`PublicNeed = { id, travelerLabel, languages, travelDate, origin, destination, layovers, flightNumbers, legs }`. Deliberately excludes age, assistance, notes and the poster's name. The web page `/n/:id` renders it with Open Graph tags (for WhatsApp previews), `noindex`, and a "Sign up to reach out" button. The poster shares it with a WhatsApp button whose text the web builds: *"Is anyone on LH761 + LH430, Delhi → Chicago on 1 Dec? My mother is flying alone and could use a companion. <link>"*.
+`PublicNeed = { id, travelerLabel, languages, travelDate, origin, destination, layovers, flightNumbers, legs, airportHelp: AirportHelp }`. Deliberately excludes age, assistance, notes and the poster's name (`airportHelp` is derived from the route and flight numbers only). The web page `/n/:id` renders it with Open Graph tags (for WhatsApp previews), `noindex`, and a "Sign up to reach out" button. The poster shares it with a WhatsApp button whose text the web builds: *"Is anyone on LH761 + LH430, Delhi → Chicago on 1 Dec? My mother is flying alone and could use a companion. <link>"*.
 
 ## "I'm flying" posts (flights)
 
@@ -197,7 +197,7 @@ A traveller posts their own flight once and offers to help. The matching works i
 
 Two hourly, email-only nudges to the poster. Each goes out at most once per need, and a need gets at most one of them.
 
-- **"Sorry, no one offered to help"** (`needs.no_helper_emailed_at`), on the travel day: about **6 hours before the first leg departs**, if the need is still `open`, not hidden, and has **zero conversations** (nobody reached out). Short and kind: sorry no one on these flights offered this time, ask the airline for wheelchair / meet-and-assist service (free on most airlines, book it with the airline at least 48 h ahead), keep the itinerary and a phone number in the traveller's bag, and post again for the next trip. No mention of paid help. The need's status doesn't change. It's sent only while the plane is still on the ground (from 6 h before departure until departure), and not for a need posted less than 6 h before departure (it never had a fair chance; it gets the day-after nudge instead).
+- **"Sorry, no one offered to help"** (`needs.no_helper_emailed_at`), on the travel day: about **6 hours before the first leg departs**, if the need is still `open`, not hidden, and has **zero conversations** (nobody reached out). Short and kind: sorry no one on these flights offered this time, ask the airline for wheelchair / meet-and-assist service (free on most airlines, book it with the airline at least 48 h ahead), keep the itinerary and a phone number in the traveller's bag, and post again for the next trip. Below it, the [airport assistance](#airport-assistance) block (airline line + official paid services on the route). No mention of TransitVault's paid help. The need's status doesn't change. It's sent only while the plane is still on the ground (from 6 h before departure until departure), and not for a need posted less than 6 h before departure (it never had a fair chance; it gets the day-after nudge instead).
   **Departure time.** The first leg's `departsAt` is read in the origin airport's IANA zone with the same table as the [landing time](#paid-help) (`lib/landing.ts`). An airport not in the table falls back to the **earliest** possible real instant (wall-clock read as UTC+14), so the email is never sent after departure; it then arrives up to ~26 h early in the worst case. Stored legs are never converted.
 - **"Did you find a companion? Mark it found or close it"** (`needs.nudged_at`), the day after the travel date, for a need still `open`. Skipped for a need that already got the "sorry" email, so a need with nobody reaching out gets one email, not two. A need where people did reach out but the poster never accepted anyone or marked it found gets this one.
 
@@ -213,9 +213,33 @@ The web's `/contact` form. Relays the message to `OPS_EMAIL` (default `support@3
 - Unlike every other send, a failure here is **not** silent: if the mailer is off or the send failed, the API answers 503 `mailer_unavailable` and the web shows the support address to write to directly.
 - 5 per hour per IP (`lib/clientKey.ts`) and 40 per hour across all callers (caps a flood of the one inbox).
 
+## Airport assistance
+
+Families are pointed to **official paid meet-and-assist services** (run or authorised by the airport: the provider handles staff, permits and liability) and always to the airline's **free** wheelchair / special-assistance service. TransitVault doesn't operate, sell or vouch for these services; the web and emails say so. No affiliate deal exists yet: clicks go through a redirect so referral volume can be shown to providers, and a referral parameter can be switched on per provider later.
+
+**Data.** A checked-in table keyed by IATA code (`api/src/data/airportAssistance.ts`; research and sources in `infra/airport-assistance-research.md`): `{ iata, airport, provider, operator, authority, url, covers: ("departure"|"arrival"|"transit")[], priceNote, affiliateParam, lastChecked }`. Only verified entries. `affiliateParam` is empty until a deal is signed.
+
+**Selection** (`lib/assist.ts`): the route's airports in order (origin, layovers, destination, each once). An airport is listed only if its entry covers what the traveller does there: **departure** at the origin, **transit** at a layover, **arrival** at the destination.
+
+```
+AirportHelp = {
+  airports: { iata, role: "origin"|"layover"|"destination", airport, provider, operator, authority, covers, priceNote,
+              bookPath: "/go/assist/<IATA>?need=<needId>" }[],   // path on the API host
+  airlines: { code, name: string|null }[]                         // from the flight numbers' 2-char prefix
+}
+```
+
+| Method | Path | Auth | Result |
+|---|---|---|---|
+| GET | `/go/assist/:iata?need=<id>` | — (a token, if sent, records the user id) | Logs one `assist_clicks` row (`iata`, `provider`, `need_id` if it's a real need, `user_id` if signed in and not a deleted account; nothing else), then **302** to the entry's `url` with `affiliateParam` appended when set. 404 for an airport without an entry. A malformed or unknown `need` is dropped, not an error. Logging is fail-soft: the redirect always happens. `cache-control: no-store`. |
+
+**Where it shows.** Web: the need page (owner inside the "Before the flight" checklist, helpers as a panel), the poster's checklist in a conversation, and the public preview `/n/:id`. Email: the travel-day "sorry, no one offered to help" mail and the poster's "helper confirmed" mail. Each lists "Book official airport assistance at <Airport>: <Provider> (paid, <authority>)" per airport with an entry, and always "Ask <airline> for free wheelchair / special assistance, at least 48 hours before the flight". Email links are absolute on `PUBLIC_API_URL`.
+
+**Metrics.** `GET /metrics` `counts` gains `assistClicks` (all time) and `assistClicksLast30d`.
+
 ## Rate limits
 
-`POST /conversations/:id/accept` 20/hour per user. `/feedback` and `/ops/*` 30/min per IP. `POST /contact` 5/hour per IP + 40/hour global. `POST /me/delete` 5 per 15 min per user.
+`POST /conversations/:id/accept` 20/hour per user. `/feedback` and `/ops/*` 30/min per IP. `POST /contact` 5/hour per IP + 40/hour global. `POST /me/delete` 5 per 15 min per user. `GET /go/assist/:iata` 60/min per IP.
 
 Auth routes as BorrowVault (per IP + per email + global ceiling). `POST /needs` and `POST /flights` 20/hour per user. `POST /needs/:id/reach-out` and `POST /flights/:id/contact` 30/hour per user. Messages 120/hour per user. Reports 20/hour per user. `GET /public/needs/:id` 120/min per IP.
 

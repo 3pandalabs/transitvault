@@ -12,7 +12,7 @@ import { ThanksBadge } from "@/components/needs";
 import { BlockButton, ReportButton } from "@/components/Safety";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { errorMessage, getConversation, sayThanks } from "@/lib/api";
+import { errorMessage, getConversation, getNeed, sayThanks } from "@/lib/api";
 import { date } from "@/lib/format";
 import { useAction, useAsync, useQueryParam } from "@/lib/hooks";
 import type { Conversation } from "@/lib/types";
@@ -75,7 +75,7 @@ export default function Thread() {
 
       {isPoster && !c.thankedAt && !c.blocked && !c.otherParty.deleted ? <SayThanks conversation={c} onDone={conv.setData} /> : null}
 
-      {isPoster ? <Checklist /> : null}
+      {isPoster ? <PosterChecklist needId={c.need.id} /> : null}
 
       {c.otherParty.deleted ? null : (
       <div className="flex flex-wrap items-start gap-2">
@@ -85,6 +85,12 @@ export default function Thread() {
       )}
     </div>
   );
+}
+
+/** The day-of checklist with the route's airline + official airport-assistance lines (static until the need loads). */
+function PosterChecklist({ needId }: { needId: string }) {
+  const need = useAsync(() => getNeed(needId), `need:${needId}`);
+  return <Checklist help={need.data?.airportHelp} />;
 }
 
 function ThanksGiven({ conversation: c }: { conversation: Conversation }) {

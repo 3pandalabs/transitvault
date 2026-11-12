@@ -2,6 +2,7 @@
 
 import { HandHeart, Languages, Plane, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { AirportHelpPanel } from "@/components/AirportHelp";
 import { Backdrop } from "@/components/Backdrop";
 import { LoadError, Loading, Panel, PanelTitle } from "@/components/common";
 import { LegsList } from "@/components/needs";
@@ -93,6 +94,8 @@ export function PublicNeedView({ id }: { id: string }) {
                 )}
               </div>
             </Panel>
+
+            <AirportHelpPanel help={need.data.airportHelp} />
           </>
         )}
 
