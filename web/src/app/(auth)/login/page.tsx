@@ -70,6 +70,19 @@ export default function LoginPage() {
           Create an account
         </Link>
       </p>
+      <p className="mt-2 text-center text-xs text-fg-muted">
+        <Link href="/support" className="hover:text-fg hover:underline">
+          Help
+        </Link>{" "}
+        ·{" "}
+        <Link href="/terms" className="hover:text-fg hover:underline">
+          Terms
+        </Link>{" "}
+        ·{" "}
+        <Link href="/privacy" className="hover:text-fg hover:underline">
+          Privacy
+        </Link>
+      </p>
     </>
   );
 }

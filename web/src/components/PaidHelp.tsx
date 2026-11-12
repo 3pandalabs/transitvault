@@ -1,6 +1,7 @@
 "use client";
 
 import { BadgeCheck, CreditCard, Gift, HandHeart, Info, ThumbsDown, ThumbsUp } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { acceptHelper, answerOutcome, errorMessage, getConversation, getCredits, getPaymentsConfig, setRewardDeclined } from "@/lib/api";
 import { dateTime } from "@/lib/format";
@@ -67,7 +68,7 @@ function PosterPanel({ c, config, onChange, paid }: { c: Conversation; config: P
   }, [waiting, c, onChange]);
 
   if (!a) {
-    if (c.needHasHelper || c.need.status === "closed" || c.blocked || !config.enabled) return null;
+    if (c.needHasHelper || c.need.status === "closed" || c.blocked || c.otherParty.deleted || !config.enabled) return null;
     return <AcceptPanel c={c} config={config} onChange={onChange} />;
   }
 
@@ -253,6 +254,7 @@ const REASON: Record<Credits["entries"][number]["reason"], string> = {
   fee_restored: "Unused fee returned",
   no_show_refund: "Refund: helper didn't show",
   card_refund: "Refunded to your card instead",
+  account_deleted: "Forfeited: account deleted",
 };
 
 /** Profile: the TransitVault credit balance and its history. */
@@ -307,6 +309,11 @@ export function PaidHelpFaq() {
         helper gets {money(config.rewardCents)} TransitVault credit as a thank-you (or helps for free). Helpers are fellow
         travellers, not hired escorts, and TransitVault doesn&apos;t provide assistance services. If a helper doesn&apos;t show,
         the fee comes back as credit; contact us for a card refund.
+      </p>
+      <p className="mt-3">
+        <Link href="/faq" className="font-medium text-accent hover:underline">
+          More questions? Read the FAQ
+        </Link>
       </p>
     </section>
   );

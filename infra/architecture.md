@@ -75,13 +75,14 @@ sequenceDiagram
 
 ## Data model
 
-`users` (name, email, phone, `strike_count`; one kind of account) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers, `reward_declined`) · `helper_acceptances` (one live per need: fee split, Stripe ids, landing/feedback times, outcome, refund) · `credit_entries` (credit ledger, balance = sum) · `messages` · `sessions`, `password_reset_tokens`.
+`users` (name, email, phone, `strike_count`, `deleted_at`; one kind of account; a deleted account stays as an anonymised row) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers, `reward_declined`) · `helper_acceptances` (one live per need: fee split, Stripe ids, landing/feedback times, outcome, refund) · `credit_entries` (credit ledger, balance = sum) · `messages` · `sessions`, `password_reset_tokens`.
 
 ## Privacy
 
 - The board is signed-in only: a need describes an elderly person travelling alone.
 - The API never returns phones or emails to other users. The board shows the poster's first name only, and the UI tells people not to post full names or passport details.
 - Conversations are visible only to their two parties (404 for anyone else). A closed need is visible only to its owner.
+- Self-service account deletion (`POST /me/delete`, api/ROUTES.md "Account deletion") closes the user's posts, revokes sessions, zeroes their credit and anonymises the row; conversations, acceptances and the credit ledger stay for the other party and for accounting. The public `/privacy` and `/terms` pages describe exactly this.
 
 ## Phase 2
 

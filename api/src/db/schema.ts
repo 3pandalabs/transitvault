@@ -17,7 +17,7 @@ export const reportTarget = pgEnum("report_target", ["need", "flight", "user"]);
 export const reportReason = pgEnum("report_reason", ["spam", "inappropriate", "scam", "other"]);
 export const acceptanceStatus = pgEnum("acceptance_status", ["pending_payment", "confirmed", "cancelled"]);
 export const acceptanceOutcome = pgEnum("acceptance_outcome", ["helped", "no_show"]);
-export const creditReason = pgEnum("credit_reason", ["helper_reward", "fee_applied", "fee_restored", "no_show_refund", "card_refund"]);
+export const creditReason = pgEnum("credit_reason", ["helper_reward", "fee_applied", "fee_restored", "no_show_refund", "card_refund", "account_deleted"]);
 
 // ---------------------------------------------------------------------------
 // Users & auth
@@ -35,6 +35,9 @@ export const users = pgTable("users", {
   // Paid help: times a poster answered "No, they didn't show" about this user
   // as their accepted helper (api/ROUTES.md "Paid help").
   strikeCount: integer("strike_count").notNull().default(0),
+  // Self-service account deletion (api/ROUTES.md "Account deletion"): the row
+  // stays, anonymised, because conversations and payment records point at it.
+  deletedAt: ts("deleted_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 

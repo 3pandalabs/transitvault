@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle } from "@/components/common";
 import { CreditPanel } from "@/components/PaidHelp";
@@ -51,6 +52,7 @@ export default function Profile() {
       <CreditPanel />
       <AlertsPanel />
       <BlockedPanel />
+      <DeleteAccountPanel />
     </div>
   );
 }
@@ -116,6 +118,23 @@ function BlockedPanel() {
         </ul>
       )}
       <ErrorText>{act.error}</ErrorText>
+    </Panel>
+  );
+}
+
+function DeleteAccountPanel() {
+  return (
+    <Panel>
+      <PanelTitle>Delete account</PanelTitle>
+      <p className="text-sm text-fg-muted">
+        Permanently delete your TransitVault account. Your posts leave the boards and you&apos;re signed out everywhere.
+      </p>
+      <Link
+        href="/profile/delete"
+        className="mt-3 inline-flex h-10 items-center gap-2 rounded-full border border-rose-300 bg-white px-4 text-sm font-medium text-rose-700 hover:bg-rose-50"
+      >
+        <Trash2 className="size-4" /> Delete my account
+      </Link>
     </Panel>
   );
 }

@@ -5,6 +5,7 @@ import { invalid } from "./errors.js";
 import { deriveRoute, LegError, type LegInput } from "./legs.js";
 import { matchReason } from "./match.js";
 import { blockedWith, thanksCounts } from "./social.js";
+import { firstName } from "./deletion.js";
 
 // Card shapes for needs and "I'm flying" posts (api/ROUTES.md), and the
 // matching between them. Both kinds share the same route columns.
@@ -13,7 +14,7 @@ export type Need = typeof needs.$inferSelect;
 export type FlightPost = typeof flightPosts.$inferSelect;
 type Row<T> = { post: T; posterName: string };
 
-export const firstName = (name: string) => name.trim().split(/\s+/)[0];
+export { firstName };
 
 /** Legs → the stored route columns, with leg errors as 400s. */
 export function routeColumns(legs: LegInput[]) {
@@ -145,6 +146,7 @@ export async function flightsMatching(need: Need) {
         eq(flightPosts.status, "open"),
         isNull(flightPosts.hiddenAt),
         ne(flightPosts.userId, need.userId),
+        isNull(users.deletedAt),
         blocked.length ? notInArray(flightPosts.userId, blocked) : undefined,
         nearby(flightPosts, need),
       ),
@@ -168,6 +170,7 @@ export async function needsMatching(flight: FlightPost) {
         eq(needs.status, "open"),
         isNull(needs.hiddenAt),
         ne(needs.userId, flight.userId),
+        isNull(users.deletedAt),
         blocked.length ? notInArray(needs.userId, blocked) : undefined,
         nearby(needs, flight),
       ),

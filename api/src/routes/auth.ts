@@ -10,6 +10,7 @@ import { db } from "../db/index.js";
 import { passwordResetTokens, sessions, users } from "../db/schema.js";
 import { env } from "../env.js";
 import { keyedLimiter } from "../lib/clientKey.js";
+import { isTombstoneEmail } from "../lib/deletion.js";
 import { actionMail, sendMail } from "../lib/mailer.js";
 import { userView } from "./me.js";
 import { globalLimiter, registerRateLimit } from "../plugins/rateLimit.js";
@@ -66,6 +67,8 @@ export async function authRoutes(fastify: FastifyInstance) {
     },
     async (req, reply) => {
       const b = req.body;
+      // A deleted account's placeholder domain is never a real address.
+      if (isTombstoneEmail(b.email)) return reply.code(409).send({ error: "registration_failed", code: "CONFLICT" });
       const [user] = await db
         .insert(users)
         .values({ email: b.email.toLowerCase(), passwordHash: await hashSecret(b.password), name: b.name, phone: b.phone })
@@ -84,7 +87,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const emailKey = req.body.email.toLowerCase();
       if (!loginGlobal() || !loginPerEmail(emailKey)) return reply.code(429).send({ error: "rate_limited" });
       const [user] = await db.select().from(users).where(eq(users.email, emailKey)).limit(1);
-      if (!user) {
+      if (!user || user.deletedAt) {
         // Equalise timing between "no such account" and "wrong password".
         await verifySecret(req.body.password, DUMMY_HASH);
         return reply.code(401).send({ error: "invalid_credentials" });
@@ -107,7 +110,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(401).send({ error: "invalid_refresh_token" });
       }
       const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
-      if (!user) return reply.code(401).send({ error: "invalid_refresh_token" });
+      if (!user || user.deletedAt) return reply.code(401).send({ error: "invalid_refresh_token" });
       // Rotate: a stolen refresh token works at most once.
       const deleted = await db.delete(sessions).where(eq(sessions.id, session.id)).returning({ id: sessions.id });
       if (!deleted.length) return reply.code(401).send({ error: "invalid_refresh_token" });
@@ -139,7 +142,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const [user] = await db
         .select({ id: users.id, email: users.email })
         .from(users)
-        .where(eq(users.email, req.body.email.toLowerCase()))
+        .where(and(eq(users.email, req.body.email.toLowerCase()), isNull(users.deletedAt)))
         .limit(1);
       const secret = randomBytes(32).toString("base64url");
       const tokenHash = await hashSecret(secret);

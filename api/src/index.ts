@@ -8,6 +8,7 @@ import { loggerOptions } from "./lib/logRedact.js";
 import { recordRequest, startCpuSampler } from "./metrics/collector.js";
 import { authRoutes } from "./routes/auth.js";
 import { startNudges } from "./lib/nudges.js";
+import { contactRoutes } from "./routes/contact.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { flightRoutes } from "./routes/flights.js";
 import { meRoutes } from "./routes/me.js";
@@ -66,6 +67,7 @@ await app.register(conversationRoutes);
 await app.register(safetyRoutes);
 await app.register(metricsRoutes);
 await app.register(paymentRoutes);
+await app.register(contactRoutes);
 
 startNudges(app.log);
 logPaymentsMode(app.log);

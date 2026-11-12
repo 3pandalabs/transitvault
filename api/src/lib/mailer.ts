@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../env.js";
+import { isTombstoneEmail } from "./deletion.js";
 
 // Production sends over SMTP (Gmail app password, SMTP_* in env.ts): the shared
 // org gateway (3pandalabs/mailer) has no verified sender for TransitVault, since
@@ -9,7 +10,7 @@ import { env } from "../env.js";
 // EVERY send fails soft: logged and counted, never thrown.
 // No match or journey action may fail because an email didn't go out.
 
-export type Mail = { to: string; subject: string; html: string; text: string };
+export type Mail = { to: string; subject: string; html: string; text: string; replyTo?: string };
 
 export type SendResult = { delivered: number; failed: number; skipped: number };
 
@@ -43,7 +44,7 @@ async function sendViaSmtp(messages: Mail[], log: (msg: string) => void): Promis
   let failed = 0;
   for (const m of messages) {
     try {
-      const info = await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text });
+      const info = await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text, ...(m.replyTo ? { replyTo: m.replyTo } : {}) });
       log(`smtp sent: ${info.response}`);
       delivered++;
     } catch (err) {
@@ -56,7 +57,11 @@ async function sendViaSmtp(messages: Mail[], log: (msg: string) => void): Promis
 
 const BATCH = 50;
 
-export async function sendMail(messages: Mail[], log: (msg: string) => void): Promise<SendResult> {
+export async function sendMail(all: Mail[], log: (msg: string) => void): Promise<SendResult> {
+  // Last guard: a deleted account's placeholder address never gets mail
+  // (every sender also skips deleted users itself).
+  const messages = all.filter((m) => !isTombstoneEmail(m.to));
+  if (messages.length < all.length) log(`skipped ${all.length - messages.length} message(s) to deleted accounts`);
   if (messages.length === 0) return { delivered: 0, failed: 0, skipped: 0 };
   if (!mailerConfigured()) {
     log(`mailer not configured; ${messages.length} message(s) not delivered`);
@@ -80,6 +85,7 @@ export async function sendMail(messages: Mail[], log: (msg: string) => void): Pr
             subject: m.subject,
             html: m.html,
             text: m.text,
+            ...(m.replyTo ? { replyTo: m.replyTo } : {}),
           })),
         }),
         signal: AbortSignal.timeout(10_000),
