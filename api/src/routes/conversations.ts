@@ -27,7 +27,7 @@ const helper = alias(users, "helper");
 /** Every conversation the caller is in, as poster or helper, with both names. */
 function conversationQuery(userId: string, extra?: SQL) {
   return db
-    .select({ c: conversations, n: needs, posterName: poster.name, helperName: helper.name })
+    .select({ c: conversations, n: needs, posterName: poster.name, helperName: helper.name, posterDeleted: poster.deletedAt, helperDeleted: helper.deletedAt })
     .from(conversations)
     .innerJoin(needs, eq(needs.id, conversations.needId))
     .innerJoin(poster, eq(poster.id, needs.userId))
@@ -65,7 +65,12 @@ async function views(rows: Row[], userId: string) {
           status: r.n.status,
         },
         role: isPoster ? "poster" : "helper",
-        otherParty: { id: otherId, firstName: firstName(isPoster ? r.helperName : r.posterName), thanksCount: thanks.get(otherId) ?? 0 },
+        otherParty: {
+          id: otherId,
+          firstName: firstName(isPoster ? r.helperName : r.posterName),
+          thanksCount: thanks.get(otherId) ?? 0,
+          deleted: (isPoster ? r.helperDeleted : r.posterDeleted) !== null,
+        },
         lastMessage: last ? { body: last.body, at: last.createdAt, mine: last.senderId === userId } : null,
         helperFlightNumbers: r.c.helperFlightNumbers,
         thankedAt: r.c.thankedAt,
@@ -86,6 +91,11 @@ async function views(rows: Row[], userId: string) {
 
 async function viewOne(r: Row, userId: string) {
   return (await views([r], userId))[0];
+}
+
+/** The other person in this conversation deleted their account (api/ROUTES.md "Account deletion"). */
+function otherPartyDeleted(r: Row, userId: string): boolean {
+  return (r.n.userId === userId ? r.helperDeleted : r.posterDeleted) !== null;
 }
 
 async function load(id: string, userId: string): Promise<Row> {
@@ -136,10 +146,11 @@ export async function openConversation(o: {
   if (created) {
     const recipientId = o.senderId === o.helperId ? o.need.userId : o.helperId;
     const [[recipient], [sender]] = await Promise.all([
-      db.select({ email: users.email }).from(users).where(eq(users.id, recipientId)).limit(1),
+      db.select({ email: users.email }).from(users).where(and(eq(users.id, recipientId), isNull(users.deletedAt))).limit(1),
       db.select({ name: users.name }).from(users).where(eq(users.id, o.senderId)).limit(1),
     ]);
     const n = o.need;
+    if (!recipient) return { conversation: await viewOne(await load(conv.id, o.senderId), o.senderId), created: true };
     const who = firstName(sender.name);
     const mail =
       o.senderId === o.helperId
@@ -228,6 +239,7 @@ export async function conversationRoutes(fastify: FastifyInstance) {
     { config: perUser(120), schema: { params, body: z.object({ body }) } },
     async (req, reply) => {
       const r = await load(req.params.id, req.userId!);
+      if (otherPartyDeleted(r, req.userId!)) throw conflict("other_party_deleted");
       if (await isBlocked(r.n.userId, r.c.helperId)) throw forbidden("blocked");
       const m = await post(req.params.id, req.userId!, req.body.body);
       return reply.code(201).send({ id: m.id, body: m.body, createdAt: m.createdAt, mine: true });
@@ -241,13 +253,15 @@ export async function conversationRoutes(fastify: FastifyInstance) {
     async (req) => {
       const r = await load(req.params.id, req.userId!);
       if (r.n.userId !== req.userId) throw notFound();
+      if (otherPartyDeleted(r, req.userId!)) throw conflict("other_party_deleted");
       const [done] = await db
         .update(conversations)
         .set({ thankedAt: new Date(), thankNote: req.body.note || null })
         .where(and(eq(conversations.id, r.c.id), isNull(conversations.thankedAt)))
         .returning({ id: conversations.id });
       if (!done) throw conflict("already_thanked");
-      const [h] = await db.select({ email: users.email }).from(users).where(eq(users.id, r.c.helperId)).limit(1);
+      const [h] = await db.select({ email: users.email }).from(users).where(and(eq(users.id, r.c.helperId), isNull(users.deletedAt))).limit(1);
+      if (!h) return viewOne(await load(r.c.id, req.userId!), req.userId!);
       const note = req.body.note ? ` They wrote: "${req.body.note}"` : "";
       void sendMail(
         [
@@ -270,6 +284,7 @@ export async function conversationRoutes(fastify: FastifyInstance) {
   app.post("/conversations/:id/accept", { config: perUser(20), schema: { params } }, async (req) => {
     const r = await load(req.params.id, req.userId!);
     if (r.n.userId !== req.userId) throw notFound();
+    if (otherPartyDeleted(r, req.userId!)) throw conflict("other_party_deleted");
     const { checkoutUrl } = await acceptHelper({ conversationId: r.c.id, posterId: req.userId!, log: req.log });
     return { checkoutUrl, conversation: await viewOne(await load(r.c.id, req.userId!), req.userId!) };
   });

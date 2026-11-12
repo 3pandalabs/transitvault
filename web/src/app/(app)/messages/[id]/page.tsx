@@ -63,18 +63,26 @@ export default function Thread() {
         <Chat
           conversationId={c.id}
           otherName={c.otherParty.firstName}
-          disabledReason={c.blocked ? "You can't send messages here: one of you has blocked the other." : undefined}
+          disabledReason={
+            c.otherParty.deleted
+              ? "This person deleted their TransitVault account, so you can't message them any more."
+              : c.blocked
+                ? "You can't send messages here: one of you has blocked the other."
+                : undefined
+          }
         />
       </Panel>
 
-      {isPoster && !c.thankedAt && !c.blocked ? <SayThanks conversation={c} onDone={conv.setData} /> : null}
+      {isPoster && !c.thankedAt && !c.blocked && !c.otherParty.deleted ? <SayThanks conversation={c} onDone={conv.setData} /> : null}
 
       {isPoster ? <Checklist /> : null}
 
+      {c.otherParty.deleted ? null : (
       <div className="flex flex-wrap items-start gap-2">
         <ReportButton targetType="user" targetId={c.otherParty.id} label={`Report ${c.otherParty.firstName}`} />
         <BlockButton userId={c.otherParty.id} firstName={c.otherParty.firstName} blocked={c.blocked} onChange={() => conv.reload()} />
       </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// End-to-end scenarios for paid help and the poster nudges, run locally
+// End-to-end scenarios for paid help, the poster nudges, account deletion and the contact form, run locally
 // against the real HTTP API (infra/README.md "Local scenarios").
 //
 //   npm run scenarios                 # report → api/scenario-report/ (gitignored)
@@ -40,7 +40,7 @@ const DAY = 24 * HOUR;
 
 // ---- recording -----------------------------------------------------------------
 
-type Mail = { n: number; scenario: string; step: string; to: string; subject: string; html: string; text: string; file: string };
+type Mail = { n: number; scenario: string; step: string; to: string; subject: string; html: string; text: string; file: string; replyTo?: string };
 type Check = { scenario: string; name: string; pass: boolean; detail: string };
 type ScenarioInfo = { key: string; title: string; facts: string[] };
 
@@ -113,7 +113,7 @@ function startMocks(): Promise<Server> {
       return json(200, { id: r.id, status: "succeeded" });
     }
     if (req.url === "/send" && req.method === "POST") {
-      const p = JSON.parse(body) as { messages: { to: string; subject: string; html: string; text: string }[] };
+      const p = JSON.parse(body) as { messages: { to: string; subject: string; html: string; text: string; replyTo?: string }[] };
       for (const m of p.messages) {
         const n = mails.length + 1;
         const slug = m.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 50).replace(/-$/, "");
@@ -423,6 +423,199 @@ async function scenario3(u5: User, u4: User) {
   for (const x of rows.rows) fact(`${x.traveler_label}: status ${x.status}, sorry email ${x.sorry ? "sent" : "not sent"}, day-after nudge ${x.nudged ? "sent" : "not sent"}`);
 }
 
+/** Any status, parsed body: for the checks that expect a refusal. */
+async function req(method: string, path: string, token: string | null, body?: unknown): Promise<{ status: number; body: any }> {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : null };
+}
+
+const PASSWORD = "scenarios-password";
+const isPlaceholder = (to: string) => to.toLowerCase().endsWith("@transitvault.invalid");
+
+async function scenario4(u7: User, u8: User) {
+  begin("4", "Account deletion: open need + flight post + credit + conversations, then re-signup");
+
+  // user7 earns $5 credit by helping user8 (a resolved acceptance does NOT block deletion).
+  const trip = await paidTrip({ poster: u8, helper: u7, label: "My father", declineReward: false });
+  const c0 = await credits(u7);
+  check("setup: user7 has $5 credit from helping", c0.balanceCents === 500, `${c0.balanceCents}`);
+
+  step = `${u7.name} posts a need and an "I'm flying" post`;
+  const need = await postNeed(u7, "My mother", Date.now() + 7 * DAY);
+  const flight = await call("POST", "/flights", u7.token, { legs: legsDepartingAt(Date.now() + 10 * DAY), languages: ["Malayalam", "English"] });
+  step = `${u8.name} reaches out; ${u7.name} replies`;
+  const conv = await call("POST", `/needs/${need.id}/reach-out`, u8.token, { message: "I'm on LH761 too, happy to keep her company." });
+  await call("POST", `/conversations/${conv.id}/messages`, u7.token, { body: "Thank you so much! She lands at gate B." });
+  await settle();
+  const board0 = await call<any[]>("GET", "/needs", u8.token);
+  check("before: user7's need is on the board", board0.some((n) => n.id === need.id));
+
+  step = `${u7.name} opens Delete account`;
+  const pre = await call("GET", "/me/deletion", u7.token);
+  check("preflight: canDelete, no blockers, $5 credit to forfeit", pre.canDelete === true && pre.blockers.length === 0 && pre.creditCents === 500, JSON.stringify(pre));
+  const wrong = await req("POST", "/me/delete", u7.token, { password: "not-the-password" });
+  check("wrong password → 403 wrong_password", wrong.status === 403 && wrong.body?.error === "wrong_password", `${wrong.status} ${wrong.body?.error}`);
+
+  step = `${u7.name} deletes the account`;
+  const mailsBefore = mails.length;
+  const del = await req("POST", "/me/delete", u7.token, { password: PASSWORD });
+  check("POST /me/delete → 204", del.status === 204, String(del.status));
+
+  step = "after deletion: what other people see";
+  const board1 = await call<any[]>("GET", "/needs", u8.token);
+  check("need gone from the board", !board1.some((n) => n.id === need.id));
+  const flights1 = await call<any[]>("GET", "/flights", u8.token);
+  check('"I\'m flying" post gone from the flights board', !flights1.some((f) => f.id === flight.flight.id));
+  const pub = await req("GET", `/public/needs/${need.id}`, null);
+  check("public share preview → 404", pub.status === 404, String(pub.status));
+  const cv = await call("GET", `/conversations/${conv.id}`, u8.token);
+  check('other party still sees the conversation, as "Deleted user"', cv.otherParty.firstName === "Deleted user" && cv.otherParty.deleted === true, `${cv.otherParty.firstName} deleted=${cv.otherParty.deleted}`);
+  const msgs = await call<any[]>("GET", `/conversations/${conv.id}/messages`, u8.token);
+  check("both messages are kept", msgs.length === 2 && msgs.some((m) => m.body.includes("gate B")), `${msgs.length} messages`);
+  const cvTrip = await call("GET", `/conversations/${trip.conv.id}`, u8.token);
+  check('the earlier paid-help conversation shows "Deleted user" too', cvTrip.otherParty.firstName === "Deleted user");
+  const send = await req("POST", `/conversations/${conv.id}/messages`, u8.token, { body: "Hello?" });
+  check("messaging a deleted account → 409 other_party_deleted", send.status === 409 && send.body?.error === "other_party_deleted", `${send.status} ${send.body?.error}`);
+  const thank = await req("POST", `/conversations/${trip.conv.id}/thanks`, u8.token, {});
+  check("thanking a deleted account → 409 other_party_deleted", thank.status === 409 && thank.body?.error === "other_party_deleted", `${thank.status} ${thank.body?.error}`);
+
+  step = "after deletion: the database";
+  const ur = (await db!.query("select name, email, phone, alerts_enabled, deleted_at is not null as deleted from users where id = $1", [u7.id])).rows[0];
+  check(
+    "user row anonymised (name, placeholder email, no phone, alerts off)",
+    ur.name === "Deleted user" && ur.email === `deleted+${u7.id}@transitvault.invalid` && ur.phone === "" && ur.alerts_enabled === false && ur.deleted,
+    JSON.stringify(ur),
+  );
+  const led = (await db!.query("select reason, amount_cents from credit_entries where user_id = $1 order by created_at", [u7.id])).rows;
+  const sum = led.reduce((t: number, e: any) => t + e.amount_cents, 0);
+  check(
+    "credit zeroed by one account_deleted −500 entry (ledger kept)",
+    sum === 0 && led.some((e: any) => e.reason === "account_deleted" && e.amount_cents === -500),
+    led.map((e: any) => `${e.reason} ${e.amount_cents}`).join(", "),
+  );
+  const acc = (await db!.query("select count(*)::int as n from helper_acceptances where helper_id = $1", [u7.id])).rows[0];
+  check("paid-help acceptance record kept for accounting", acc.n === 1, `${acc.n}`);
+  const posts = (
+    await db!.query(
+      "select (select status from needs where id = $1) as need, (select status from flight_posts where id = $2) as flight, (select count(*)::int from sessions where user_id = $3) as sessions",
+      [need.id, flight.flight.id, u7.id],
+    )
+  ).rows[0];
+  check("need + flight post closed, sessions revoked", posts.need === "closed" && posts.flight === "closed" && posts.sessions === 0, JSON.stringify(posts));
+
+  step = "after deletion: signing in";
+  const me = await req("GET", "/me", u7.token);
+  check("old access token → 401 account_deleted", me.status === 401 && me.body?.error === "account_deleted", `${me.status} ${me.body?.error}`);
+  const login = await req("POST", "/auth/login", null, { email: u7.email, password: PASSWORD });
+  check("login with the old email → 401", login.status === 401, String(login.status));
+  const reset = await req("POST", "/auth/password-reset/request", null, { email: u7.email });
+  await settle();
+  check("password reset for the old email → 204, no email sent", reset.status === 204 && !mailsSince(mailsBefore).some((m) => m.to === u7.email));
+
+  step = "sweeps and alerts after deletion";
+  // Put the closed need inside the travel-day "sorry" window, and post a matching flight.
+  await db!.query("update needs set created_at = now() - interval '3 days' where id = $1", [need.id]);
+  await moveTrip(need.id, Date.now() + 5 * HOUR);
+  await call("POST", "/flights", u8.token, { legs: legsDepartingAt(Date.now() + 5 * HOUR), languages: ["Hindi"] });
+  await sweeps.sweepNudges(quietLog);
+  await sweeps.sweepPaidHelp(quietLog);
+  await settle();
+  const after = mailsSince(mailsBefore);
+  check(
+    "no email to the deleted account (old address or placeholder)",
+    !after.some((m) => m.to === u7.email || isPlaceholder(m.to)),
+    after.map((m) => m.to).join(", ") || "no emails at all",
+  );
+
+  step = `${u7.name}'s email signs up again`;
+  const again = await call("POST", "/auth/signup", null, { email: u7.email, password: PASSWORD, name: "Gita Nair", phone: "+15550000077" });
+  check("the old email can sign up again, as a new account", again.user.id !== u7.id, `${again.user.id.slice(0, 8)} ≠ ${u7.id.slice(0, 8)}`);
+  const fresh = await call("GET", "/me/credits", again.accessToken);
+  const mine = await call<any[]>("GET", "/needs/mine", again.accessToken);
+  const convs = await call<any[]>("GET", "/conversations", again.accessToken);
+  check("the new account starts empty (no credit, posts or conversations)", fresh.balanceCents === 0 && mine.length === 0 && convs.length === 0);
+  fact(`user7 deleted with ${usd(500)} credit (forfeited), an open need, a flight post and 2 conversations; then signed up again as a fresh account`);
+}
+
+async function scenario5(u9: User, u10: User) {
+  // Reuses user3 (poster) and user4 (helper): the signup limit is 10 per hour per IP.
+  begin("5", "Account deletion blocked while paid help is in flight");
+  const need = await postNeed(u9, "My aunt", Date.now() + 7 * DAY);
+  const conv = await call("POST", `/needs/${need.id}/reach-out`, u10.token, { message: "I'm on that flight." });
+  step = `${u9.name} accepts ${u10.name} (checkout open)`;
+  const acc = await call("POST", `/conversations/${conv.id}/accept`, u9.token);
+
+  const h1 = await req("POST", "/me/delete", u10.token, { password: PASSWORD });
+  check(
+    "helper, checkout open → 409 paid_help_in_progress (pending_payment, helper)",
+    h1.status === 409 && h1.body?.error === "paid_help_in_progress" && h1.body.blockers?.[0]?.kind === "pending_payment" && h1.body.blockers[0].role === "helper",
+    `${h1.status} ${JSON.stringify(h1.body?.blockers)}`,
+  );
+  const p1 = await req("POST", "/me/delete", u9.token, { password: PASSWORD });
+  check("poster, checkout open → 409 (pending_payment, poster)", p1.status === 409 && p1.body.blockers?.[0]?.role === "poster", `${p1.status}`);
+
+  step = "Stripe webhook confirms; trip not yet resolved";
+  await webhookPaid(sessionIdOf(acc.checkoutUrl));
+  await settle();
+  const pre = await call("GET", "/me/deletion", u10.token);
+  check("preflight: canDelete false, trip_unresolved", pre.canDelete === false && pre.blockers[0]?.kind === "trip_unresolved", JSON.stringify(pre.blockers));
+  const h2 = await req("POST", "/me/delete", u10.token, { password: PASSWORD });
+  check("helper, confirmed + unresolved → 409", h2.status === 409, String(h2.status));
+  const still = await req("GET", "/me", u10.token);
+  check("the refused account still works", still.status === 200);
+
+  step = `the trip lands and ${u9.name} answers "helped"`;
+  await moveTrip(need.id, Date.now() - 24 * HOUR);
+  await db!.query("update helper_acceptances set lands_at = now() - interval '5 hours', feedback_due_at = now() - interval '1 minute' where conversation_id = $1", [conv.id]);
+  await call("POST", `/conversations/${conv.id}/outcome`, u9.token, { helped: true });
+  await settle();
+  const h3 = await req("POST", "/me/delete", u10.token, { password: PASSWORD });
+  check("once resolved, the helper can delete → 204", h3.status === 204, String(h3.status));
+  const led = (await db!.query("select reason, amount_cents from credit_entries where user_id = $1 order by created_at", [u10.id])).rows;
+  check(
+    "helper's $5 reward was credited, then forfeited (balance 0)",
+    led.length === 2 && led[0].reason === "helper_reward" && led[1].reason === "account_deleted" && led[1].amount_cents === -500,
+    led.map((e: any) => `${e.reason} ${e.amount_cents}`).join(", "),
+  );
+  const c = await req("GET", `/conversations/${conv.id}`, u9.token);
+  check('poster\'s confirmed-helper conversation now shows "Deleted user"', c.body?.otherParty?.firstName === "Deleted user");
+}
+
+async function scenario6(u9: User) {
+  begin("6", "Contact form (POST /contact)");
+  step = "a visitor sends the contact form";
+  let from = mails.length;
+  const r1 = await req("POST", "/contact", null, { name: "Kavya Iyer", email: "kavya@scenarios.test", topic: "payments", message: "My helper didn't show. Can I get a card refund?" });
+  await settle();
+  const m1 = mailsSince(from);
+  check("204 and exactly one email to the ops address", r1.status === 204 && m1.length === 1 && m1[0].to === "support@3pandalabs.com", `${r1.status} → ${m1.map((m) => m.to).join(", ")}`);
+  check("Reply-To is the sender, topic in the subject", m1[0]?.replyTo === "kavya@scenarios.test" && m1[0].subject.includes("Payments & credit"), `${m1[0]?.replyTo} | ${m1[0]?.subject}`);
+
+  step = "a signed-in user sends it";
+  from = mails.length;
+  await req("POST", "/contact", u9.token, { name: u9.name, email: u9.email, topic: "delete_data", message: "Please delete my data." });
+  await settle();
+  check("the email names the signed-in user's id", mailsSince(from)[0]?.text.includes(u9.id) === true);
+
+  step = "a bot fills the honeypot";
+  from = mails.length;
+  const bot = await req("POST", "/contact", null, { name: "Bot", email: "bot@scenarios.test", topic: "other", message: "spam", website: "http://spam.example" });
+  await settle();
+  check("honeypot → 204, nothing sent", bot.status === 204 && mails.length === from, String(bot.status));
+
+  step = "rate limit: 5 per hour per IP";
+  const bad = await req("POST", "/contact", null, { name: "", email: "not-an-email", topic: "general", message: "" });
+  check("invalid body → 400", bad.status === 400, String(bad.status));
+  const fifth = await req("POST", "/contact", null, { name: "Bot", email: "bot@scenarios.test", topic: "other", message: "x", website: "y" });
+  const sixth = await req("POST", "/contact", null, { name: "Kavya Iyer", email: "kavya@scenarios.test", topic: "general", message: "Hello again" });
+  check("6th request in the hour → 429 rate_limited", fifth.status === 204 && sixth.status === 429 && sixth.body?.error === "rate_limited", `${fifth.status}, ${sixth.status}`);
+}
+
 // ---- report --------------------------------------------------------------------------
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -441,7 +634,7 @@ function writeReport() {
       join(OUT_DIR, m.file),
       `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(m.subject)}</title><style>${PAGE_CSS}</style></head><body><main>
 <p><a href="../index.html">← all scenarios</a></p>
-<div class="meta"><b>To:</b> ${esc(m.to)}<br><b>Subject:</b> ${esc(m.subject)}<br><b>Scenario:</b> ${esc(m.scenario)} · <b>Step:</b> ${esc(m.step)}</div>
+<div class="meta"><b>To:</b> ${esc(m.to)}<br>${m.replyTo ? `<b>Reply-To:</b> ${esc(m.replyTo)}<br>` : ""}<b>Subject:</b> ${esc(m.subject)}<br><b>Scenario:</b> ${esc(m.scenario)} · <b>Step:</b> ${esc(m.step)}</div>
 <div class="mail">${m.html}</div>
 <details><summary>Plain-text part</summary><pre>${esc(m.text)}</pre></details>
 </main></body></html>`,
@@ -494,8 +687,10 @@ try {
     ...(await import("../src/lib/nudges.js")),
   } as unknown as Sweeps;
 
-  const [u1, u2, u3, u4, u5, u6] = await Promise.all(
-    ["Asha Mehta", "Bilal Khan", "Chitra Rao", "Dev Patel", "Esha Gupta", "Farhan Ali"].map((n, i) => signup(i + 1, n)),
+  const [u1, u2, u3, u4, u5, u6, u7, u8] = await Promise.all(
+    ["Asha Mehta", "Bilal Khan", "Chitra Rao", "Dev Patel", "Esha Gupta", "Farhan Ali", "Gita Nair", "Hari Singh"].map((n, i) =>
+      signup(i + 1, n),
+    ),
   );
   console.log("\nScenario 1");
   await scenario1(u1, u2, u6);
@@ -503,6 +698,12 @@ try {
   await scenario2(u3, u4);
   console.log("\nScenario 3");
   await scenario3(u5, u4);
+  console.log("\nScenario 4");
+  await scenario4(u7, u8);
+  console.log("\nScenario 5");
+  await scenario5(u3, u4);
+  console.log("\nScenario 6");
+  await scenario6(u3);
 } catch (err) {
   crashed = err;
   check("harness ran to completion", false, String(err));

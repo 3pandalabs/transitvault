@@ -24,7 +24,7 @@ Follow `knowledge_base/launching-a-new-app.md`. This file only records TransitVa
    ```
 2. **DNS** (before the first Coolify deploy): `api.transitvault` proxied → box IP; `api-internal.transitvault` DNS-only → box IP. Don't create `transitvault.3pandalabs.com` by hand: `wrangler deploy` owns it. Edge TLS for `api.transitvault` can lag for a few hours; check with `openssl s_client` before debugging the origin.
 3. **Coolify `transitvault-api`**: public repo, branch `main`, Base Directory `api`, Dockerfile `Dockerfile`, Ports Exposes `8080`, domains `https://api.transitvault.3pandalabs.com,https://api-internal.transitvault.3pandalabs.com`, health check `GET /health`.
-4. **Env vars**, all **runtime-only**: `DATABASE_URL, JWT_SECRET, WEB_ORIGIN=https://transitvault.3pandalabs.com, INTERNAL_SHARED_SECRET, SMTP_USER, SMTP_PASS, METRICS_TOKEN`. Paid help adds `PAYMENTS_ENABLED, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, OPS_TOKEN` (see below); leave them unset and nothing changes.
+4. **Env vars**, all **runtime-only**: `DATABASE_URL, JWT_SECRET, WEB_ORIGIN=https://transitvault.3pandalabs.com, INTERNAL_SHARED_SECRET, SMTP_USER, SMTP_PASS, METRICS_TOKEN`. Optional `OPS_EMAIL`: reports and the `/contact` form are emailed there; it defaults to `support@3pandalabs.com`, the address the web pages publish. Paid help adds `PAYMENTS_ENABLED, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, OPS_TOKEN` (see below); leave them unset and nothing changes.
 5. **Web**: `cd web && npm run cf:deploy`. `web/.env.production` (committed) carries the `NEXT_PUBLIC_*` values.
 6. **Backups**: Coolify Postgres backup schedule → `transitvault-backups`.
 7. **The six surfaces** (launch checklist §4): website card, admin page Usage table, admin flow diagram, tech-stack doc, Uptime Kuma (`/` and `api…/health`), watchdog.
@@ -71,11 +71,14 @@ cd ../web && cp .env.example .env.local && npm install && npm run dev   # :3000
 
 ## Local scenarios (paid help + nudges, end to end)
 
-`cd api && npm run scenarios` drives three scenarios through the real HTTP API and prints a PASS/FAIL table (exit 1 on any failure):
+`cd api && npm run scenarios` drives six scenarios through the real HTTP API and prints a PASS/FAIL table (exit 1 on any failure):
 
 1. Poster accepts a helper, pays $10 (Checkout + signed webhook), the trip lands, the sweep sends "did they help?", the poster clicks Yes → helper has $5 credit; the helper then spends it on their own trip ($5 credit + $5 card).
 2. Same, but the helper chose "I'm helping for free" → no credit, no `helper_reward` entry.
 3. A need nobody reached out about: no email 7 h before departure, exactly one "sorry, no one offered to help" inside the 6 h window, no duplicate, and no day-after nudge. Control: a need with one conversation gets no "sorry" but does get the day-after nudge.
+4. Account deletion: a user with $5 credit, an open need, an "I'm flying" post and two conversations deletes their account → posts gone from the boards and the public preview, the other party still reads the conversation as "Deleted user" but can't message or thank them, credit zeroed by an `account_deleted` entry, the acceptance kept, old token and login refused, password reset and sweeps send nothing, and the email signs up again as a fresh account.
+5. Deletion blocked while paid help is in flight: 409 for both sides while the checkout is open and while the confirmed trip is unresolved; allowed once the family answers.
+6. Contact form: one email to `OPS_EMAIL` with Reply-To = the sender, the signed-in user id included, the honeypot sends nothing, 400 on a bad body, 429 on the 6th request in an hour.
 
 **Prerequisites:** Docker running, `npm ci` done in `api/`, and ports **5438** (Postgres) and **8099** (API) free, so stop the dev DB first (`docker compose -f docker-compose.dev.yml down`), or set `SCENARIOS_PG_PORT` / `SCENARIOS_API_PORT`. No `.env` is needed; the script sets every variable itself.
 

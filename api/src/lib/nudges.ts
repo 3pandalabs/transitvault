@@ -27,7 +27,7 @@ export async function nudgeStaleNeeds(log: FastifyBaseLogger): Promise<number> {
   if (!claimed.length) return 0;
   const mails = [];
   for (const n of claimed) {
-    const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, n.userId)).limit(1);
+    const [u] = await db.select({ email: users.email }).from(users).where(and(eq(users.id, n.userId), isNull(users.deletedAt))).limit(1);
     if (!u) continue;
     mails.push(
       simpleMail(
@@ -67,7 +67,7 @@ export async function emailNoHelperNeeds(log: FastifyBaseLogger, now = new Date(
       .where(and(eq(needs.id, c.id), open))
       .returning();
     if (!n) continue;
-    const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, n.userId)).limit(1);
+    const [u] = await db.select({ email: users.email }).from(users).where(and(eq(users.id, n.userId), isNull(users.deletedAt))).limit(1);
     if (!u) continue;
     mails.push(noHelperMail(u.email, n));
   }

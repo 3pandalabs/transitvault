@@ -64,7 +64,8 @@ export type ConversationSummary = {
     status: NeedStatus;
   };
   role: "poster" | "helper";
-  otherParty: PostedBy;
+  /** `deleted`: they deleted their account; shown as "Deleted user", sending is refused. */
+  otherParty: PostedBy & { deleted: boolean };
   lastMessage: { body: string; at: string; mine: boolean } | null;
   helperFlightNumbers: string[];
   thankedAt: string | null;
@@ -108,7 +109,21 @@ export type Acceptance = {
 
 export type PaymentsConfig = { enabled: boolean; feeCents: number; rewardCents: number; currency: string };
 
-export type CreditReason = "helper_reward" | "fee_applied" | "fee_restored" | "no_show_refund" | "card_refund";
+export type CreditReason = "helper_reward" | "fee_applied" | "fee_restored" | "no_show_refund" | "card_refund" | "account_deleted";
+
+/** api/ROUTES.md "Account deletion". */
+export type DeletionBlocker = {
+  kind: "pending_payment" | "trip_unresolved";
+  role: "poster" | "helper";
+  conversationId: string;
+  needId: string;
+  origin: string;
+  destination: string;
+  travelDate: string;
+};
+export type DeletionPreflight = { canDelete: boolean; blockers: DeletionBlocker[]; creditCents: number };
+
+export type ContactTopic = "general" | "safety" | "payments" | "delete_data" | "other";
 export type Credits = {
   balanceCents: number;
   entries: { id: string; amountCents: number; reason: CreditReason; needId: string | null; createdAt: string }[];

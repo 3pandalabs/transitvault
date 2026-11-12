@@ -70,6 +70,17 @@ export default function SignupPage() {
           />
         </Field>
         <ErrorText>{error}</ErrorText>
+        <p className="text-xs text-fg-muted">
+          By creating an account you confirm you&apos;re 18 or over and agree to the{" "}
+          <Link href="/terms" className="underline hover:text-fg">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-fg">
+            Privacy Policy
+          </Link>
+          .
+        </p>
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : null} Create account
         </Button>

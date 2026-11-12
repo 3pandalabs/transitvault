@@ -10,7 +10,9 @@ import type {
   BlockedUser,
   Conversation,
   ConversationSummary,
+  ContactTopic,
   Credits,
+  DeletionPreflight,
   FeedbackView,
   PaymentsConfig,
   Flight,
@@ -66,6 +68,11 @@ const MESSAGE_COPY: Record<string, string> = {
   already_answered: "This has already been answered. Thank you!",
   not_accepted: "This helper wasn't accepted for the trip.",
   rate_limited: "You're doing that too often. Wait a minute and try again.",
+  other_party_deleted: "This person deleted their TransitVault account.",
+  wrong_password: "That password isn't right.",
+  paid_help_in_progress: "A paid-help trip is still in progress. Wait until it's resolved, or contact support@3pandalabs.com.",
+  account_deleted: "This account was deleted.",
+  mailer_unavailable: "We couldn't send your message right now. Please email support@3pandalabs.com instead.",
 };
 
 /** Human message for any thrown value. */
@@ -203,6 +210,12 @@ export const confirmPasswordReset = (token: string, password: string) =>
   call<void>("/auth/password-reset/confirm", { method: "POST", body: { token, password }, auth: false });
 
 export const getMe = () => call<Me>("/me");
+export const getDeletionPreflight = () => call<DeletionPreflight>("/me/deletion");
+export const deleteAccount = (password: string) => call<void>("/me/delete", { method: "POST", body: { password } });
+
+/** Public; a bearer token (if signed in) only adds the user id to the email. */
+export const sendContact = (b: { name: string; email: string; topic: ContactTopic; message: string; website?: string }) =>
+  call<void>("/contact", { method: "POST", body: b, auth: getTokens().access !== null });
 export const updateMe = (b: { name?: string; phone?: string; alertsEnabled?: boolean }) => call<{ user: User }>("/me", { method: "PATCH", body: b });
 
 // ---- needs ----

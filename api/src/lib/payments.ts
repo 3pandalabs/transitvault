@@ -156,6 +156,10 @@ export async function acceptHelper(o: { conversationId: string; posterId: string
   const result = await db.transaction(async (tx) => {
     // Serialises this poster's credit spending and their accepts.
     await tx.execute(sql`select id from users where id = ${o.posterId} for update`);
+    // Account deletion locks the user row for update; this share lock makes it
+    // wait for (or be seen by) a deletion of the helper (api/ROUTES.md "Account deletion").
+    const h = await tx.execute(sql`select deleted_at from users where id = ${row.c.helperId} for share`);
+    if ((h.rows[0] as { deleted_at: Date | null } | undefined)?.deleted_at) throw conflict("other_party_deleted");
     const [existing] = await tx
       .select()
       .from(helperAcceptances)

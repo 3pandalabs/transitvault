@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Backdrop } from "@/components/Backdrop";
 import { PaidHelpFaq } from "@/components/PaidHelp";
 import { Logo } from "@/components/Wordmark";
+import { DeletedNotice } from "@/components/DeletedNotice";
 
 const STEPS = [
   {
@@ -36,6 +37,7 @@ export default function Landing() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4">
+        <DeletedNotice />
         <section className="py-14 sm:py-20">
           <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-fg sm:text-5xl">
             Parent flying alone? Post their flight.
@@ -83,6 +85,18 @@ export default function Landing() {
         </section>
 
         <PaidHelpFaq />
+
+        <p className="mb-16 text-sm text-fg-muted">
+          Questions?{" "}
+          <Link href="/faq" className="font-medium text-accent hover:underline">
+            Read the FAQ
+          </Link>{" "}
+          or{" "}
+          <Link href="/contact" className="font-medium text-accent hover:underline">
+            contact us
+          </Link>
+          .
+        </p>
       </main>
     </div>
   );

@@ -8,7 +8,7 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 - JSON everywhere. Errors: `{ "error": "<message or code>", "code"?: "<DOMAIN_CODE>" }`.
 - Auth: `Authorization: Bearer <accessToken>` (15-min JWT). Refresh tokens are opaque `<sessionId>.<secret>` and rotate on use.
 - Airports are IATA codes (`^[A-Z]{3}$`). Flight numbers are normalised to `^[A-Z0-9]{2}[0-9]{1,4}[A-Z]?$` (e.g. `AI127`, `LH755`).
-- Everything except `/health`, `/metrics`, `/auth/*`, `/public/*`, `/payments/config`, `/feedback`, `/stripe/webhook` and `/ops/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
+- Everything except `/health`, `/metrics`, `/auth/*`, `/public/*`, `/payments/config`, `/feedback`, `/contact`, `/stripe/webhook` and `/ops/*` needs a signed-in user. Needs are never public: a need describes an elderly person travelling alone.
 - 404 (not 403) for a conversation the caller is not part of.
 
 ## Health and ops
@@ -39,6 +39,29 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 |---|---|---|---|
 | GET | `/me` | — | `{ user: User }` |
 | PATCH | `/me` | `{ name?, phone?, alertsEnabled? }` | `{ user: User }` |
+
+### Account deletion
+
+Self-service in the web app (Profile → "Delete account", also linked from `/support`). Same shape as BorrowVault's.
+
+| Method | Path | Body | Result |
+|---|---|---|---|
+| GET | `/me/deletion` | — | `{ canDelete: boolean, blockers: DeletionBlocker[], creditCents: number }`. A preflight so the web can show what blocks deletion and how much credit would be forfeited. Same checks as the delete itself. |
+| POST | `/me/delete` | `{ password }` | **204**. The current password confirms it: wrong → 403 `wrong_password`. 409 `{ error: "paid_help_in_progress", code: "CONFLICT", blockers: DeletionBlocker[] }` while any blocker exists. 5 per 15 min per user. The web signs out afterwards (the refresh token is already dead). |
+
+`DeletionBlocker = { kind: "pending_payment"|"trip_unresolved", role: "poster"|"helper", conversationId, needId, origin, destination, travelDate }`: a paid-help acceptance where the caller is the poster or the accepted helper, and it is either `pending_payment` (checkout open) or `confirmed` with no outcome yet (no "did they help?" answer and the 48 h default hasn't run). Wait until the trip is resolved, or contact support.
+
+What deletion does, in **one transaction** (blockers are re-checked after locking the user row; `acceptHelper` locks the helper's row too, so an acceptance can't slip in between):
+
+- **Posts close**: every `open`/`found` need → `closed`, every open "I'm flying" post → `closed`. They leave the boards, matches, alerts, the public preview and every nudge.
+- **Deleted outright**: sessions (refresh tokens), password-reset tokens, and block rows on either side.
+- **The user row is anonymised** (kept, because conversations, messages, acceptances and the credit ledger point at it): `name` → `"Deleted user"`, `email` → `deleted+<userId>@transitvault.invalid` (unique; `.invalid` is a reserved TLD, so it can never route), `phone` → `""`, password hash → an unusable value, `alertsEnabled` → false, `deleted_at` → now.
+- **Credit is forfeited**: if the balance isn't 0, one `account_deleted` ledger entry brings it to 0.
+- **Kept**: conversations and messages (the other person's history; the deleted side shows as "Deleted user"), the (closed) needs and flight posts, reports, `helper_acceptances` and `credit_entries` (payment records kept for tax/accounting, now linked only to the anonymised row).
+
+Afterwards: login with the old email → 401 `invalid_credentials`, refresh → 401, a password reset sends nothing, and the address can sign up again as a brand-new account. Access tokens already issued are refused at once by this API process (any authed route → 401 `account_deleted`) and expire within 15 minutes regardless. No email is ever sent to a deleted account: every sender skips `deleted_at` users, and `sendMail` drops any `@transitvault.invalid` address as a last guard.
+
+**Talking to a deleted account.** `ConversationSummary.otherParty` gains `deleted: boolean` (its `firstName` is `"Deleted user"`). The history stays readable; sending a message, thanking or accepting them answers 409 `other_party_deleted`.
 
 ## Needs
 
@@ -83,7 +106,7 @@ Need `status`: `open` (shown on the board) → `found` (the poster found a compa
 
 One conversation per (need, helper). The poster gets an email when someone reaches out (fail-soft, never blocks the request).
 
-`ConversationSummary = { id, need: { id, travelerLabel, origin, destination, travelDate, flightNumbers, status }, role: "poster"|"helper", otherParty: { id, firstName, thanksCount }, lastMessage: { body, at, mine } | null, helperFlightNumbers, thankedAt: string|null, thankNote: string|null, blocked: boolean, rewardDeclined: boolean, acceptance: Acceptance | null, needHasHelper: boolean, createdAt }`
+`ConversationSummary = { id, need: { id, travelerLabel, origin, destination, travelDate, flightNumbers, status }, role: "poster"|"helper", otherParty: { id, firstName, thanksCount, deleted }, lastMessage: { body, at, mine } | null, helperFlightNumbers, thankedAt: string|null, thankNote: string|null, blocked: boolean, rewardDeclined: boolean, acceptance: Acceptance | null, needHasHelper: boolean, createdAt }`
 
 `Conversation = ConversationSummary`. Phone numbers and emails are never sent: people share contact details in the conversation when they choose to. `blocked` is true when either party has blocked the other; sending is then refused.
 
@@ -105,7 +128,7 @@ Optional and **off by default**: it's on only when `PAYMENTS_ENABLED=true` **and
    - **Yes, or no answer within 48 h of the email**: the helper gets **$5 TransitVault credit**, unless they chose "I'm helping for free".
    - **No (didn't show)**: the full $10 fee comes back to the poster as **TransitVault credit**, not a card refund (Stripe keeps its fee on refunds). No helper credit, and the helper's `strike_count` goes up by one. A card refund of the cash part is **ops-only, on request** (`POST /ops/acceptances/:id/card-refund`): it takes that amount back out of the poster's credit (`card_refund`, once per acceptance, so it can't be refunded twice) and refunds the card via Stripe. Refused if the poster has already spent the credit.
 
-**Credit** is a ledger (`credit_entries`: user, signed amount in cents, reason, need, acceptance); the balance is the sum. It isn't cash and can't be withdrawn: it only comes off the user's own future fees. Reasons: `helper_reward` (+500), `fee_applied` (−credit used), `fee_restored` (+credit used, cancelled checkout), `no_show_refund` (+1000), `card_refund` (−cash part, ops refund). Each happens at most once per acceptance.
+**Credit** is a ledger (`credit_entries`: user, signed amount in cents, reason, need, acceptance); the balance is the sum. It isn't cash and can't be withdrawn: it only comes off the user's own future fees. Reasons: `helper_reward` (+500), `fee_applied` (−credit used), `fee_restored` (+credit used, cancelled checkout), `no_show_refund` (+1000), `card_refund` (−cash part, ops refund). Each happens at most once per acceptance. `account_deleted` (−balance, no acceptance) zeroes the balance when the user deletes their account ([Account deletion](#account-deletion)).
 
 **Landing time.** Leg times are airport-local wall-clock without an offset (see Needs). For this one purpose the last leg's `arrivesAt` is read in the arrival airport's IANA zone, from a built-in table of common airports (`lib/landing.ts`, DST-aware). An airport not in the table falls back to the latest possible real instant (wall-clock read as UTC−12), so we never ask before landing; the ask is then at most ~26 h late. Stored legs are never converted.
 
@@ -178,9 +201,21 @@ Two hourly, email-only nudges to the poster. Each goes out at most once per need
   **Departure time.** The first leg's `departsAt` is read in the origin airport's IANA zone with the same table as the [landing time](#paid-help) (`lib/landing.ts`). An airport not in the table falls back to the **earliest** possible real instant (wall-clock read as UTC+14), so the email is never sent after departure; it then arrives up to ~26 h early in the worst case. Stored legs are never converted.
 - **"Did you find a companion? Mark it found or close it"** (`needs.nudged_at`), the day after the travel date, for a need still `open`. Skipped for a need that already got the "sorry" email, so a need with nobody reaching out gets one email, not two. A need where people did reach out but the poster never accepted anyone or marked it found gets this one.
 
+## Contact
+
+| Method | Path | Auth | Body | Result |
+|---|---|---|---|---|
+| POST | `/contact` | — (a bearer token, if sent, adds the user id to the email) | `{ name (1–120), email, topic: "general"\|"safety"\|"payments"\|"delete_data"\|"other", message (1–4000), website? }` | 204; 429 `rate_limited`; 503 `mailer_unavailable` |
+
+The web's `/contact` form. Relays the message to `OPS_EMAIL` (default `support@3pandalabs.com`) through the normal mailer, with **Reply-To = the sender's email**, so ops answers straight from the inbox. Nothing is stored: the email is the record.
+
+- `website` is a honeypot (hidden on the form). When it's non-empty the API answers 204 and sends nothing.
+- Unlike every other send, a failure here is **not** silent: if the mailer is off or the send failed, the API answers 503 `mailer_unavailable` and the web shows the support address to write to directly.
+- 5 per hour per IP (`lib/clientKey.ts`) and 40 per hour across all callers (caps a flood of the one inbox).
+
 ## Rate limits
 
-`POST /conversations/:id/accept` 20/hour per user. `/feedback` and `/ops/*` 30/min per IP.
+`POST /conversations/:id/accept` 20/hour per user. `/feedback` and `/ops/*` 30/min per IP. `POST /contact` 5/hour per IP + 40/hour global. `POST /me/delete` 5 per 15 min per user.
 
 Auth routes as BorrowVault (per IP + per email + global ceiling). `POST /needs` and `POST /flights` 20/hour per user. `POST /needs/:id/reach-out` and `POST /flights/:id/contact` 30/hour per user. Messages 120/hour per user. Reports 20/hour per user. `GET /public/needs/:id` 120/min per IP.
 
