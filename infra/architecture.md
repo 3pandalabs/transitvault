@@ -73,9 +73,25 @@ sequenceDiagram
   end
 ```
 
+## Official airport assistance
+
+TransitVault doesn't register porters or escorts. For each airport on a need's route that has an **official paid meet-and-assist service** (run or authorised by the airport), the need page, the poster's checklist, the public preview and two emails show a "Book official airport assistance" link, next to the airline's **free** wheelchair / special-assistance line. The services come from a checked-in table (`api/src/data/airportAssistance.ts`, research in `infra/airport-assistance-research.md`); no provider API is called. Links go through `GET /go/assist/:iata`, which logs a row in `assist_clicks` and redirects, so the owner can show providers referral volume before any affiliate deal (contract: `api/ROUTES.md` "Airport assistance").
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor F as Family (web or email)
+  participant API
+  participant P as Provider (airport service)
+  F->>API: GET /go/assist/FRA?need=<id>
+  API->>API: insert assist_clicks (iata, provider, need_id?, user_id?)
+  API-->>F: 302 provider URL (+ affiliate param once a deal exists)
+  F->>P: books and pays the provider directly
+```
+
 ## Data model
 
-`users` (name, email, phone, `strike_count`, `deleted_at`; one kind of account; a deleted account stays as an anonymised row) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers, `reward_declined`) · `helper_acceptances` (one live per need: fee split, Stripe ids, landing/feedback times, outcome, refund) · `credit_entries` (credit ledger, balance = sum) · `messages` · `sessions`, `password_reset_tokens`.
+`users` (name, email, phone, `strike_count`, `deleted_at`; one kind of account; a deleted account stays as an anonymised row) · `needs` (traveller label/age/languages, assistance, `legs` jsonb + derived `origin`, `destination`, `layovers[]`, `flight_numbers[]`, `travel_date`, status `open|found|closed`) · `conversations` (one per need + helper, helper's flight numbers, `reward_declined`) · `helper_acceptances` (one live per need: fee split, Stripe ids, landing/feedback times, outcome, refund) · `credit_entries` (credit ledger, balance = sum) · `assist_clicks` (outbound clicks to official airport-assistance providers: airport, provider, optional need/user id) · `messages` · `sessions`, `password_reset_tokens`.
 
 ## Privacy
 

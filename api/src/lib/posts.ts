@@ -1,6 +1,7 @@
 import { and, arrayOverlaps, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { conversations, flightPosts, helperAcceptances, needs, users } from "../db/schema.js";
+import { airportHelp } from "./assist.js";
 import { invalid } from "./errors.js";
 import { deriveRoute, LegError, type LegInput } from "./legs.js";
 import { matchReason } from "./match.js";
@@ -98,7 +99,7 @@ export async function needSummaries(rows: Row<Need>[], viewerId: string) {
 }
 
 export function publicNeed(n: Need) {
-  return { id: n.id, travelerLabel: n.travelerLabel, languages: n.languages, ...routeFields(n) };
+  return { id: n.id, travelerLabel: n.travelerLabel, languages: n.languages, ...routeFields(n), airportHelp: airportHelp(n, n.id) };
 }
 
 // ---- flight posts ----------------------------------------------------------

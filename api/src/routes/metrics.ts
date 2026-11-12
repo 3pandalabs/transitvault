@@ -26,6 +26,8 @@ type CountsRow = {
   conversations: number;
   messages_last_24h: number;
   active_sessions: number;
+  assist_clicks: number;
+  assist_clicks_last_30d: number;
 };
 
 type DatabaseRow = { size_bytes: string; size_pretty: string; connections: number };
@@ -47,7 +49,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         (select count(*) from reports where created_at > now() - interval '7 days')::int as reports_last_7d,
         (select count(*) from conversations)::int as conversations,
         (select count(*) from messages where created_at > now() - interval '24 hours')::int as messages_last_24h,
-        (select count(*) from sessions where expires_at > now())::int as active_sessions
+        (select count(*) from sessions where expires_at > now())::int as active_sessions,
+        (select count(*) from assist_clicks)::int as assist_clicks,
+        (select count(*) from assist_clicks where created_at > now() - interval '30 days')::int as assist_clicks_last_30d
     `);
     const database = await db.execute<DatabaseRow>(sql`
       select
@@ -73,6 +77,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         conversations: c.conversations,
         messagesLast24h: c.messages_last_24h,
         activeSessions: c.active_sessions,
+        // Outbound clicks to official airport-assistance providers (referral volume).
+        assistClicks: c.assist_clicks,
+        assistClicksLast30d: c.assist_clicks_last_30d,
       },
       traffic: { apiRequestsLastHour: requestsLastHour() },
       process: { rssBytes: mem.rss, heapUsedBytes: mem.heapUsed, cpuPercentOfOneCore: cpuPercentOfOneCore() },

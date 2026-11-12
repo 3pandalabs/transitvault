@@ -7,6 +7,7 @@ import { env } from "../env.js";
 import { conflict, forbidden, notFound, unavailable } from "./errors.js";
 import { CURRENCY, dollars, FEE_CENTS, REWARD_CENTS, splitFee } from "./fees.js";
 import { FEEDBACK_WINDOW_MS, landingSchedule } from "./landing.js";
+import { assistMailBlock } from "./assist.js";
 import { choiceMail, sendMail, simpleMail, type Mail } from "./mailer.js";
 import { firstName } from "./posts.js";
 import { isBlocked } from "./social.js";
@@ -282,6 +283,7 @@ export async function confirmAcceptance(id: string, paymentIntentId: string | nu
         `${firstName(helper.name)} is confirmed as the helper for ${n.origin} → ${n.destination}`,
         `${firstName(helper.name)} is confirmed as the helper for ${trip}. ${paid} After the flight lands we'll ask you whether they helped; if they didn't show, the fee comes back as TransitVault credit.`,
         `/messages/${confirmed.conversationId}`,
+        assistMailBlock(n, n.id, env.PUBLIC_API_URL),
       ),
       simpleMail(
         helper.email,

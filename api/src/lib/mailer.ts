@@ -148,16 +148,22 @@ export function choiceMail(to: string, subject: string, text: string, choices: {
   };
 }
 
-/** Plain notification: one paragraph + optional link. Fail-soft like sendMail. */
-export function simpleMail(to: string, subject: string, text: string, link?: string): Mail {
+/**
+ * Plain notification: one paragraph + optional link, plus an optional extra
+ * block below it (pre-escaped html + its plain-text twin, e.g. the airport
+ * assistance lines from lib/assist.ts). Fail-soft like sendMail.
+ */
+export function simpleMail(to: string, subject: string, text: string, link?: string, extra?: { text: string; html: string }): Mail {
   const url = link ? `${env.WEB_ORIGIN}${link}` : null;
+  const body = url ? `${text}\n\n${url}` : text;
   return {
     to,
     subject,
-    text: url ? `${text}\n\n${url}` : text,
+    text: extra ? `${body}\n\n${extra.text}` : body,
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:520px;">
   <p style="font-size:15px;line-height:1.6;">${esc(text)}</p>
   ${url ? `<p><a href="${esc(url)}">Open TransitVault</a></p>` : ""}
+  ${extra ? extra.html : ""}
 </div>`,
   };
 }
