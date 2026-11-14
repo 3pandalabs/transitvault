@@ -34,7 +34,7 @@ export function LegalPage({
   return (
     <div className="relative">
       <Backdrop />
-      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4">
+      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-4">
         <Logo />
         <nav className="flex gap-4 text-sm text-fg-muted">
           {NAV.map((n) => (

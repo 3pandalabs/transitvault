@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, logout } from "@/lib/api";
-import { SessionProvider, useMeLoader, useSignedIn } from "@/lib/session";
+import { SessionProvider, takeExit, useHydrated, useMeLoader, useSignedIn } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
 import { LoadError, Loading } from "./common";
@@ -22,12 +22,13 @@ function loginUrl() {
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const signedIn = useSignedIn();
   const me = useMeLoader(signedIn);
 
   useEffect(() => {
-    if (!signedIn) router.replace(loginUrl());
-  }, [signedIn, router]);
+    if (hydrated && !signedIn) router.replace(takeExit() ?? loginUrl());
+  }, [hydrated, signedIn, router]);
 
   useEffect(() => {
     if (me.error instanceof ApiError && me.error.status === 401) router.replace(loginUrl());
