@@ -17,7 +17,7 @@ Hostnames, **all under one first label** (Cloudflare's per-app cert depends on i
 
 ## Layout
 
-`api/` (Fastify 5 + Drizzle + Zod + JWT) · `web/` (Next.js 16 on Cloudflare Workers) · `infra/`. There's no `app/`: the web app is mobile-first and installable as a PWA. There's no Temporal worker either: the only timers are hourly in-process DB sweeps (nudges, paid help).
+`api/` (Fastify 5 + Drizzle + Zod + JWT) · `web/` (Next.js 16 on Cloudflare Workers) · `android/` · `infra/`. There's no React Native `app/`: the web app is mobile-first and installable as a PWA, and `android/` is a Bubblewrap **Trusted Web Activity** wrapping it for Google Play (`com.threepanda.transitvault`; build, signing and listing in `infra/play-store/README.md`). Web deploys update the Android app instantly. Keep `web/src/app/manifest.ts`, `android/twa-manifest.json` and the fingerprints in `web/src/app/.well-known/assetlinks.json/route.ts` in step. There's no Temporal worker either: the only timers are hourly in-process DB sweeps (nudges, paid help).
 
 ## Invariants
 

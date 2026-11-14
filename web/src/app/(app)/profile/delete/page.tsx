@@ -2,7 +2,6 @@
 
 import { ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle } from "@/components/common";
 import { money } from "@/components/PaidHelp";
@@ -11,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, clearTokens, deleteAccount, errorMessage, getDeletionPreflight } from "@/lib/api";
 import { date } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
-import { useSession } from "@/lib/session";
+import { leaveTo, useSession } from "@/lib/session";
 import type { DeletionBlocker } from "@/lib/types";
 
 // Self-service account deletion (api/ROUTES.md "Account deletion"): what goes,
@@ -19,7 +18,6 @@ import type { DeletionBlocker } from "@/lib/types";
 
 export default function DeleteAccountPage() {
   const { user } = useSession();
-  const router = useRouter();
   const pre = useAsync(getDeletionPreflight, "deletion-preflight");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -35,8 +33,9 @@ export default function DeleteAccountPage() {
         if (err instanceof ApiError && err.status === 409 && Array.isArray(err.body?.blockers)) setBlockers(err.body.blockers as DeletionBlocker[]);
         throw err;
       }
+      // AppShell redirects as soon as the tokens go; tell it where (TV-2).
+      leaveTo("/?deleted=1");
       clearTokens();
-      router.replace("/?deleted=1");
     }, errorMessage);
   }
 
