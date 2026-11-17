@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FEE_CENTS, splitFee } from "../src/lib/fees.js";
 import { FEEDBACK_DELAY_MS, landingSchedule, wallClockToUtc } from "../src/lib/landing.js";
-import { formEncode, signPayload, verifySignature } from "../src/lib/stripe.js";
+import { createCheckoutSession, formEncode, signPayload, STATEMENT_DESCRIPTOR_SUFFIX, verifySignature } from "../src/lib/stripe.js";
 
 const HOUR = 60 * 60_000;
 
@@ -67,5 +67,37 @@ describe("stripe form encoding", () => {
   it("nests objects and arrays the Stripe way", () => {
     const s = formEncode({ mode: "payment", line_items: [{ quantity: 1, price_data: { unit_amount: 500 } }], metadata: { a: "b" }, x: undefined }).toString();
     expect(decodeURIComponent(s)).toBe("mode=payment&line_items[0][quantity]=1&line_items[0][price_data][unit_amount]=500&metadata[a]=b");
+  });
+});
+
+describe("stripe checkout session", () => {
+  it("shows TRANSITVAU on the card statement (suffix to the account's 3PANDALABS)", async () => {
+    let body = "";
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      body = init.body;
+      return new Response(JSON.stringify({ id: "cs_1", url: "https://stripe.test" }), { status: 200 });
+    });
+    try {
+      await createCheckoutSession(
+        { secretKey: "sk_test", apiBase: "https://stripe.test" },
+        {
+          acceptanceId: "a1",
+          amountCents: 1000,
+          currency: "usd",
+          productName: "Help",
+          customerEmail: "a@b.c",
+          successUrl: "https://x/ok",
+          cancelUrl: "https://x/no",
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const f = new URLSearchParams(body);
+    expect(f.get("mode")).toBe("payment");
+    expect(f.get("payment_intent_data[statement_descriptor_suffix]")).toBe("TRANSITVAU");
+    expect(f.get("payment_intent_data[metadata][acceptance_id]")).toBe("a1");
+    expect(STATEMENT_DESCRIPTOR_SUFFIX).toMatch(/^[A-Z0-9 ]{1,10}$/);
   });
 });
