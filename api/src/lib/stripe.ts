@@ -46,6 +46,13 @@ async function stripePost<T>(cfg: StripeConfig, path: string, body: Record<strin
 
 export type CheckoutSession = { id: string; url: string | null };
 
+/**
+ * Appended to the shared Stripe account's `3PANDALABS` prefix so card
+ * statements read `3PANDALABS* TRANSITVAU`. Stripe caps prefix + "* " + suffix
+ * at 22 chars, so 10 here (hence the cut-off name); letters/digits/spaces only.
+ */
+export const STATEMENT_DESCRIPTOR_SUFFIX = "TRANSITVAU";
+
 export function createCheckoutSession(
   cfg: StripeConfig,
   o: {
@@ -68,7 +75,7 @@ export function createCheckoutSession(
       client_reference_id: o.acceptanceId,
       customer_email: o.customerEmail,
       metadata: { acceptance_id: o.acceptanceId },
-      payment_intent_data: { metadata: { acceptance_id: o.acceptanceId } },
+      payment_intent_data: { metadata: { acceptance_id: o.acceptanceId }, statement_descriptor_suffix: STATEMENT_DESCRIPTOR_SUFFIX },
       success_url: o.successUrl,
       cancel_url: o.cancelUrl,
       expires_at: Math.floor(o.expiresAt.getTime() / 1000),
