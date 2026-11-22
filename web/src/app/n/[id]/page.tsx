@@ -48,8 +48,20 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: { absolute: title },
       description,
       robots: { index: false, follow: false },
-      openGraph: { type: "website", siteName: "TransitVault", url: `/n/${need.id}`, title, description },
-      twitter: { card: "summary", title, description: `${cityRoute(need.origin, need.destination)} · ${shareAsk(need)}` },
+      openGraph: {
+        type: "website",
+        siteName: "TransitVault by 3PandaLabs",
+        url: `/n/${need.id}`,
+        title,
+        description,
+        images: [{ url: "/og.png", width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description: `${cityRoute(need.origin, need.destination)} · ${shareAsk(need)}`,
+        images: ["/og.png"],
+      },
     };
   } catch {
     return GENERIC;

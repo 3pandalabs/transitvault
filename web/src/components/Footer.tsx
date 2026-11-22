@@ -24,6 +24,7 @@ export function Footer() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>&copy; 3PandaLabs LLC, USA.</span>
           <span>All rights reserved.</span>
+          <p className="mt-1 basis-full text-xs text-fg-muted">Built by pandas. Loved by people.</p>
         </div>
       </div>
     </footer>
