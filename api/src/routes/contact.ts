@@ -28,6 +28,8 @@ export function contactMail(o: { to: string; name: string; email: string; topic:
   const who = `${o.name} <${o.email}>${o.userId ? ` (signed in as user ${o.userId})` : " (not signed in)"}`;
   return {
     to: o.to,
+    // A support email: from the support address, not the TransitVault one.
+    from: o.to,
     replyTo: o.email,
     subject: `TransitVault contact: ${topic} from ${o.name}`.slice(0, 200),
     text: `From: ${who}\nTopic: ${topic}\n\n${o.message}\n\nReply to this email to answer them.`,
