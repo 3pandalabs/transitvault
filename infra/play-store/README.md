@@ -2,12 +2,12 @@
 
 The Android app is a **Trusted Web Activity** (`android/`, generated with Bubblewrap): Chrome shows `https://transitvault.3pandalabs.com` full screen, without a URL bar, starting at `/needs`. There's no app code to keep in step. Every web deploy updates the app immediately. Rebuild the AAB only when the name, icon, colours, start URL, shortcuts or version change.
 
-Package `com.threepanda.transitvault` · listing copy and policy answers: `listing.md`.
+Package `com.threepandalabs.transitvault` · listing copy and policy answers: `listing.md`.
 
 ## Signing
 
 - Upload key: `C:\Users\Anil\Documents\keys\transitvault-upload.jks`, alias `upload` (password in Claude memory `transitvault-upload-key`). **Back it up off this PC.** If it's lost, request an upload-key reset in Play Console.
-- Google re-signs installs with the Play App Signing key. After creating the app, copy that key's SHA-256 (Play Console → Test and release → Setup → App signing) into `web/src/app/.well-known/assetlinks.json/route.ts` and redeploy the web app **before** promoting a release, or Play installs show a URL bar.
+- Google re-signs installs with the Play App Signing key. After creating the app, copy **every** SHA-256 Play shows (Play Console → Test and release → Setup → App signing → "Copy all certificate fingerprints": classical key, quantum-ready key, any extra certificate; AdVault showed an address bar on newer phones until all were listed) into `web/src/app/.well-known/assetlinks.json/route.ts` and redeploy the web app **before** promoting a release, or Play installs show a URL bar.
 - Check: https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://transitvault.3pandalabs.com&relation=delegate_permission/common.handle_all_urls
 
 ## Build
