@@ -20,6 +20,10 @@
 const SHA256_CERT_FINGERPRINTS = [
   // Upload key: C:\Users\Anil\Documents\keys\transitvault-upload.jks, alias "upload".
   "72:FF:0F:07:B7:1C:85:62:0B:50:8E:1B:0D:A5:9A:D3:0D:EE:16:CA:8B:E4:E9:6C:21:09:A4:97:4E:DA:1A:FD",
+  // Play App Signing (app 4974941412391168060), every SHA-256 Play lists: classical, quantum-ready, extra cert.
+  "6E:1D:9E:6C:4C:6F:93:2D:3D:06:8E:88:3F:0A:CA:E7:74:08:56:41:DD:35:BF:DA:A4:9B:5D:4B:1B:79:35:7B",
+  "A6:C2:CA:26:90:8C:7A:52:E4:25:9D:00:11:E3:51:7B:A6:D6:87:59:23:F0:CE:82:60:B9:61:7D:C6:D3:13:12",
+  "8F:A3:0B:AE:6B:E7:3D:F4:23:71:74:67:6A:1B:56:4B:42:FA:27:BE:18:AA:73:C0:74:D9:71:62:0D:F5:22:82",
   // Play App Signing fingerprints (classical + quantum-ready + any extra
   // certificate): ADD ALL HERE after the app is created in Play Console.
 ];
