@@ -63,11 +63,15 @@ export async function safetyRoutes(fastify: FastifyInstance) {
 
       void sendMail(
         [
-          simpleMail(
-            env.OPS_EMAIL,
-            `TransitVault report: ${b.targetType} (${b.reason})`,
-            `Report ${row.id}: ${b.targetType} ${b.targetId}, reason ${b.reason}, by user ${req.userId}.${b.note ? ` Note: ${b.note}` : ""}`,
-          ),
+          {
+            // A support email: from the support address, not the TransitVault one.
+            ...simpleMail(
+              env.OPS_EMAIL,
+              `TransitVault report: ${b.targetType} (${b.reason})`,
+              `Report ${row.id}: ${b.targetType} ${b.targetId}, reason ${b.reason}, by user ${req.userId}.${b.note ? ` Note: ${b.note}` : ""}`,
+            ),
+            from: env.OPS_EMAIL,
+          },
         ],
         (m) => req.log.info(m),
       ).catch((err) => req.log.warn({ err }, "report mail failed"));
