@@ -56,7 +56,14 @@ const schema = z.object({
   SOURCE_COMMIT: optional,
 });
 
-const parsed = schema.safeParse(process.env);
+// Treat a blank env var as unset, so typed fields (OPS_EMAIL, the URLs) fall
+// back to their defaults instead of failing validation. Container platforms
+// (Coolify, docker-compose env_file) inject declared-but-empty keys as "", and
+// .env.example ships some keys blank on purpose.
+const raw = Object.fromEntries(
+  Object.entries(process.env).map(([k, v]) => [k, v === "" ? undefined : v]),
+);
+const parsed = schema.safeParse(raw);
 if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
   throw new Error(`Invalid environment: ${issues}`);
