@@ -10,7 +10,10 @@ import { isTombstoneEmail } from "./deletion.js";
 // EVERY send fails soft: logged and counted, never thrown.
 // No match or journey action may fail because an email didn't go out.
 
-export type Mail = { to: string; subject: string; html: string; text: string; replyTo?: string };
+// `from` overrides the default sender (env.EMAIL_FROM_ADDRESS) for a single
+// message — used by the support emails (contact form, reports) so they come
+// from OPS_EMAIL while everything else comes from the TransitVault address.
+export type Mail = { to: string; subject: string; html: string; text: string; replyTo?: string; from?: string };
 
 export type SendResult = { delivered: number; failed: number; skipped: number };
 
@@ -39,10 +42,14 @@ function smtp(): Transporter {
 }
 
 async function sendViaSmtp(messages: Mail[], log: (msg: string) => void): Promise<SendResult> {
-  const from = { name: env.EMAIL_FROM_NAME || "TransitVault", address: env.SMTP_USER };
+  const fromName = env.EMAIL_FROM_NAME || "TransitVault";
   let delivered = 0;
   let failed = 0;
   for (const m of messages) {
+    // Gmail only accepts a From address the authenticated account (SMTP_USER)
+    // owns or has verified as a "Send mail as" alias; an unverified address is
+    // silently rewritten back to SMTP_USER.
+    const from = { name: fromName, address: m.from || env.EMAIL_FROM_ADDRESS };
     try {
       const info = await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text, ...(m.replyTo ? { replyTo: m.replyTo } : {}) });
       log(`smtp sent: ${info.response}`);

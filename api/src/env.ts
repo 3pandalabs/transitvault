@@ -31,7 +31,12 @@ const schema = z.object({
   SMTP_USER: optional,
   SMTP_PASS: optional,
   EMAIL_FROM_NAME: z.string().default("TransitVault"),
-  // Where user reports go (api/ROUTES.md "Safety").
+  // Default From address for all user-facing mail (alerts, nudges, password
+  // reset, messages, paid help). Over Gmail SMTP this must be a verified "Send
+  // mail as" alias on SMTP_USER's account, or Gmail rewrites it to SMTP_USER.
+  EMAIL_FROM_ADDRESS: z.string().email().default("transitvault@3pandalabs.com"),
+  // Where user reports go (api/ROUTES.md "Safety"), and the From on those
+  // support emails (contact form, reports) — see routes/contact.ts, safety.ts.
   OPS_EMAIL: z.string().email().default("support@3pandalabs.com"),
 
   // Shared with the web Worker (sent as X-Internal-Secret on api-internal calls).
