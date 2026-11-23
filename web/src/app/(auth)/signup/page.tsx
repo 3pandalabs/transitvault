@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorText, Field } from "@/components/common";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui/input";
 import { ApiError, errorMessage, setTokens, signup } from "@/lib/api";
 import { PHONE_RE } from "@/lib/format";
 import { useNextPath } from "@/lib/hooks";
@@ -59,9 +59,8 @@ export default function SignupPage() {
           <Input id="phone" type="tel" required autoComplete="tel" inputMode="tel" value={form.phone} onChange={set("phone")} />
         </Field>
         <Field label="Password" htmlFor="password" hint="At least 10 characters.">
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             required
             minLength={10}
             autoComplete="new-password"

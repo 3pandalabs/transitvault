@@ -155,14 +155,18 @@ export async function authRoutes(fastify: FastifyInstance) {
         const url = `${env.WEB_ORIGIN}/reset-password?token=${encodeURIComponent(`${row.id}.${secret}`)}`;
         void sendMail(
           [
-            actionMail(
-              user.email,
-              "Reset your TransitVault password",
-              "Someone asked to reset the password for this TransitVault account. The link works once and expires in 30 minutes.",
-              "Choose a new password",
-              url,
-              "If this wasn't you, ignore this email. Your password stays the same.",
-            ),
+            {
+              // Reset links go from the shared 3PandaLabs reset alias; name stays "TransitVault".
+              ...actionMail(
+                user.email,
+                "Reset your TransitVault password",
+                "Someone asked to reset the password for this TransitVault account. The link works once and expires in 30 minutes.",
+                "Choose a new password",
+                url,
+                "If this wasn't you, ignore this email. Your password stays the same.",
+              ),
+              from: env.PASSWORD_RESET_FROM_ADDRESS,
+            },
           ],
           (msg) => req.log.info({ userId: user.id }, msg),
         ).catch((err) => req.log.warn({ err }, "password reset mail failed"));
