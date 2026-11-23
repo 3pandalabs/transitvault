@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ErrorText, Field } from "@/components/common";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/input";
 import { ApiError, confirmPasswordReset, errorMessage } from "@/lib/api";
 
 function Form() {
@@ -67,9 +67,8 @@ function Form() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <Field label="New password" htmlFor="password" hint="At least 10 characters.">
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           required
           minLength={10}
           autoFocus
@@ -79,9 +78,8 @@ function Form() {
         />
       </Field>
       <Field label="Confirm new password" htmlFor="confirm">
-        <Input
+        <PasswordInput
           id="confirm"
-          type="password"
           required
           minLength={10}
           autoComplete="new-password"

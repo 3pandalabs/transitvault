@@ -35,6 +35,11 @@ const schema = z.object({
   // reset, messages, paid help). Over Gmail SMTP this must be a verified "Send
   // mail as" alias on SMTP_USER's account, or Gmail rewrites it to SMTP_USER.
   EMAIL_FROM_ADDRESS: z.string().email().default("transitvault@3pandalabs.com"),
+  // From address for password-reset mail only (the shared 3PandaLabs reset
+  // alias). Display name stays EMAIL_FROM_NAME ("TransitVault"). Like the
+  // addresses above, over Gmail SMTP it must be a verified "Send mail as" alias
+  // on SMTP_USER's account, or Gmail rewrites it to SMTP_USER.
+  PASSWORD_RESET_FROM_ADDRESS: z.string().email().default("passwordreset@3pandalabs.com"),
   // Where user reports go (api/ROUTES.md "Safety"), and the From on those
   // support emails (contact form, reports) — see routes/contact.ts, safety.ts.
   OPS_EMAIL: z.string().email().default("support@3pandalabs.com"),
