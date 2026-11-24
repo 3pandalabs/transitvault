@@ -15,7 +15,10 @@ export default function ContactPage() {
       intro={
         <>
           <p>
-            Send us a message below, or email <Mail /> directly. Many answers are already in the <A href="/faq">FAQ</A>.
+            Send us a message below, email <Mail /> directly, or call{" "}
+            <a href="tel:+13323168453" className="font-medium hover:underline">
+              +1 (332) 316-8453
+            </a>. Many answers are already in the <A href="/faq">FAQ</A>.
           </p>
           <p className="text-sm text-fg-muted">
             Urgent issue at the airport? Contact the airline or airport staff first. We can&apos;t intervene in real time.

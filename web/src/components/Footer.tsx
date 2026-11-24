@@ -1,3 +1,4 @@
+import { FollowUs } from "@/components/FollowUs";
 import Link from "next/link";
 
 // Sitewide footer (root layout, so every page), copy from brand/footer/footer.css,
@@ -22,6 +23,7 @@ export function Footer() {
           ))}
         </nav>
         <div className="flex flex-wrap items-center justify-between gap-2">
+          <FollowUs />
           <span>&copy; 3PandaLabs LLC, USA.</span>
           <span>All rights reserved.</span>
           <p className="mt-1 basis-full text-xs text-fg-muted">Built by pandas. Loved by people.</p>
