@@ -22,7 +22,7 @@ Phase 1 is a **needs board**. Someone posts a need ("my mom is flying Delhi → 
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| POST | `/auth/signup` | `{ email, password(≥10), name, phone }` | 201 `AuthResponse`; 409 `registration_failed` |
+| POST | `/auth/signup` | `{ email, password(≥10), name, phone }` | 201 `AuthResponse`; 409 `registration_failed`. A 201 also emails "TransitVault New user" to `NEW_USER_ALERT_EMAIL` (fire-and-forget) |
 | POST | `/auth/login` | `{ email, password }` | `AuthResponse`; 401 `invalid_credentials` |
 | POST | `/auth/refresh` | `{ refreshToken }` | `AuthResponse` (rotated) |
 | POST | `/auth/logout` | `{ refreshToken }` | 204 |

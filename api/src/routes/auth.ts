@@ -12,6 +12,7 @@ import { env } from "../env.js";
 import { keyedLimiter } from "../lib/clientKey.js";
 import { isTombstoneEmail } from "../lib/deletion.js";
 import { actionMail, sendMail } from "../lib/mailer.js";
+import { notifyNewUser } from "../lib/newUserAlert.js";
 import { userView } from "./me.js";
 import { globalLimiter, registerRateLimit } from "../plugins/rateLimit.js";
 
@@ -76,6 +77,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         .returning();
       // Generic failure for a taken address: no account-enumeration oracle.
       if (!user) return reply.code(409).send({ error: "registration_failed", code: "CONFLICT" });
+      // Only a row this insert created gets here. Fire-and-forget (lib/newUserAlert.ts).
+      notifyNewUser(user, (msg) => req.log.warn(msg));
       return reply.code(201).send(await tokens(user));
     },
   );
