@@ -166,6 +166,8 @@ function apiEnv(mockBase: string): NodeJS.ProcessEnv {
     SMTP_PASS: "",
     MAILER_URL: mockBase,
     MAILER_TOKEN: "scenarios",
+    // Scenario users are test accounts: no "TransitVault New user" alerts.
+    NEW_USER_ALERT_EMAIL: "off",
     PAYMENTS_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_scenarios",
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
