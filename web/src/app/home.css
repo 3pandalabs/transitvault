@@ -1,0 +1,304 @@
+/* Home page only (imported by app/page.tsx). Everything is prefixed `tv-` so
+   none of it can leak into the board, conversations or the share preview.
+   Light only, like the rest of TransitVault (see globals.css). Motion is
+   decoration: every animation is switched off under prefers-reduced-motion at
+   the bottom of this file, leaving the first scene of each loop on screen. */
+
+.tv-mono {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Sky-blue gradient text for the hero accent. */
+.tv-ink {
+  background: linear-gradient(100deg, #1d4ed8 0%, #0ea5e9 45%, #10b981 75%, #1d4ed8 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tv-ink 8s ease-in-out infinite;
+}
+@keyframes tv-ink {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ---------- Sky behind the hero ---------- */
+.tv-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.tv-cloud {
+  position: absolute;
+  left: 0;
+  top: var(--y);
+  width: var(--w, 140px);
+  height: calc(var(--w, 140px) * 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 6px 24px rgba(29, 78, 216, 0.06);
+  filter: blur(1px);
+  animation: tv-drift var(--d, 60s) linear var(--delay, 0s) infinite;
+}
+.tv-cloud::before,
+.tv-cloud::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: inherit;
+}
+.tv-cloud::before { width: 46%; height: 150%; left: 16%; bottom: 20%; }
+.tv-cloud::after { width: 34%; height: 120%; left: 50%; bottom: 25%; }
+@keyframes tv-drift {
+  from { transform: translateX(-30vw); }
+  to { transform: translateX(110vw); }
+}
+
+/* A contrail plane crossing the sky, very faint. */
+.tv-contrail {
+  position: absolute;
+  top: 18%;
+  left: 0;
+  width: 220px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(29, 78, 216, 0.25));
+  animation: tv-contrail 22s linear infinite;
+}
+.tv-contrail svg { position: absolute; right: -14px; top: -8px; width: 18px; height: 18px; color: rgba(29, 78, 216, 0.45); }
+@keyframes tv-contrail {
+  from { transform: translate(-260px, 40px) rotate(-6deg); }
+  to { transform: translate(110vw, -60px) rotate(-6deg); }
+}
+
+/* ---------- Hero stage: the boarding-pass need card ---------- */
+.tv-stage { perspective: 1400px; }
+.tv-float { animation: tv-float 7s ease-in-out infinite; }
+@keyframes tv-float {
+  0%, 100% { transform: rotateX(6deg) rotateY(-10deg) translateY(0); }
+  50% { transform: rotateX(3deg) rotateY(-5deg) translateY(-12px); }
+}
+
+.tv-pass {
+  background: #fff;
+  border-radius: 1.75rem;
+  box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+.tv-pass-top {
+  background:
+    radial-gradient(circle at 85% -20%, rgba(255, 255, 255, 0.28) 0 30%, transparent 31%),
+    linear-gradient(135deg, #1d4ed8, #0ea5e9);
+}
+/* The tear-off perforation between the route and the details. */
+.tv-perf { position: relative; height: 0; border-top: 2px dashed #e4e4e7; margin: 0 1.25rem; }
+.tv-perf::before,
+.tv-perf::after {
+  content: "";
+  position: absolute;
+  top: -12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--tv-notch, #eef4ff);
+}
+.tv-perf::before { left: calc(-1.25rem - 11px); }
+.tv-perf::after { right: calc(-1.25rem - 11px); }
+
+/* Rotating example trips: every layer runs the same cycle, shifted by its
+   slot (--rot-delay). Four slots, so each is visible for 25% of the loop and
+   fades out fully before the next fades in (overlapping text reads as a glitch). */
+.tv-rot {
+  opacity: 0;
+  animation: tv-rot var(--rot-dur, 28s) linear infinite;
+  animation-delay: var(--rot-delay, 0s);
+}
+@keyframes tv-rot {
+  0%, 1% { opacity: 0; transform: translateY(6px); }
+  3% { opacity: 1; transform: translateY(0); }
+  23% { opacity: 1; transform: translateY(0); }
+  24.5%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+
+/* Route line with a plane flying along it. The runner spans the whole track
+   and moves its own width, so the plane at its left edge crosses the track. */
+.tv-track { position: relative; height: 2px; background-image: linear-gradient(90deg, rgba(255,255,255,.75) 50%, transparent 0); background-size: 10px 2px; }
+.tv-runner { position: absolute; inset: 0; animation: tv-run 7s cubic-bezier(.45, 0, .55, 1) infinite; animation-delay: var(--rot-delay, 0s); }
+.tv-runner svg { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; color: #fff; filter: drop-shadow(0 2px 4px rgba(0,0,0,.2)); }
+@keyframes tv-run {
+  0% { transform: translateX(0); opacity: 0; }
+  8% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+.tv-stop {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+}
+
+/* Toasts under the card, taking turns. */
+.tv-toast {
+  opacity: 0;
+  transform: translateY(14px) scale(.97);
+  animation: tv-toast 12s cubic-bezier(.2, .8, .2, 1) infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes tv-toast {
+  0% { opacity: 0; transform: translateY(14px) scale(.97); }
+  4%, 30% { opacity: 1; transform: translateY(0) scale(1); }
+  34%, 100% { opacity: 0; transform: translateY(-8px) scale(.98); }
+}
+
+/* Small chips orbiting the card. */
+.tv-chip { animation: tv-bob 6s ease-in-out infinite; }
+.tv-chip-2 { animation-duration: 7.5s; animation-delay: -2s; }
+@keyframes tv-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+
+/* Live dot. */
+.tv-ping { position: relative; }
+.tv-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: currentColor;
+  animation: tv-ping 1.8s ease-out infinite;
+}
+@keyframes tv-ping {
+  0% { transform: scale(1); opacity: .7; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* ---------- Marquee ---------- */
+.tv-marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.tv-marquee-track { display: flex; width: max-content; animation: tv-marquee 40s linear infinite; }
+.tv-marquee:hover .tv-marquee-track { animation-play-state: paused; }
+@keyframes tv-marquee { to { transform: translateX(-50%); } }
+
+/* ---------- How it works: a dashed flight path joining the steps ---------- */
+.tv-path {
+  background-image: linear-gradient(90deg, #93c5fd 50%, transparent 0);
+  background-size: 14px 2px;
+  background-repeat: repeat-x;
+}
+.tv-path .tv-runner svg { color: #1d4ed8; filter: none; }
+.tv-path .tv-runner { animation-duration: 9s; }
+.tv-step { transition: transform .25s ease, box-shadow .25s ease; }
+.tv-step:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -18px rgba(29, 78, 216, .35); }
+
+/* ---------- Matching: two posts meet on a shared flight ---------- */
+.tv-match-l { animation: tv-match-l 9s cubic-bezier(.6, 0, .3, 1) infinite; }
+.tv-match-r { animation: tv-match-r 9s cubic-bezier(.6, 0, .3, 1) infinite; }
+@keyframes tv-match-l {
+  0%, 8% { transform: translateX(-18%) rotate(-4deg); opacity: .0; }
+  18% { opacity: 1; }
+  34%, 86% { transform: translateX(0) rotate(-2deg); opacity: 1; }
+  96%, 100% { transform: translateX(-18%) rotate(-4deg); opacity: 0; }
+}
+@keyframes tv-match-r {
+  0%, 8% { transform: translateX(18%) rotate(4deg); opacity: 0; }
+  18% { opacity: 1; }
+  34%, 86% { transform: translateX(0) rotate(2deg); opacity: 1; }
+  96%, 100% { transform: translateX(18%) rotate(4deg); opacity: 0; }
+}
+.tv-match-badge { animation: tv-badge 9s ease-out infinite; }
+@keyframes tv-badge {
+  0%, 36% { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
+  42% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+  46%, 84% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  92%, 100% { transform: translate(-50%, -50%) scale(.8); opacity: 0; }
+}
+.tv-match-mail { animation: tv-mail 9s ease-out infinite; }
+@keyframes tv-mail {
+  0%, 50% { opacity: 0; transform: translateY(10px); }
+  56%, 84% { opacity: 1; transform: translateY(0); }
+  92%, 100% { opacity: 0; transform: translateY(0); }
+}
+
+/* Chat bubbles appearing one by one. */
+.tv-bubble { opacity: 0; animation: tv-bubble 12s ease-out infinite; animation-delay: var(--delay, 0s); }
+@keyframes tv-bubble {
+  0% { opacity: 0; transform: translateY(8px); }
+  5%, 80% { opacity: 1; transform: translateY(0); }
+  88%, 100% { opacity: 0; transform: translateY(0); }
+}
+
+/* ---------- Plans: the paid-help card glows ---------- */
+.tv-glow-card { position: relative; isolation: isolate; }
+.tv-glow-card::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  background: conic-gradient(from var(--tv-angle, 0deg), #1d4ed8, #0ea5e9, #10b981, #f59e0b, #1d4ed8);
+  animation: tv-spin 6s linear infinite;
+}
+.tv-glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  z-index: -2;
+  border-radius: inherit;
+  background: conic-gradient(from var(--tv-angle, 0deg), #1d4ed8, #0ea5e9, #10b981, #f59e0b, #1d4ed8);
+  filter: blur(26px);
+  opacity: .45;
+  animation: tv-spin 6s linear infinite;
+}
+@property --tv-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes tv-spin { to { --tv-angle: 360deg; } }
+
+/* ---------- Closing CTA ---------- */
+.tv-cta {
+  background:
+    radial-gradient(60% 80% at 10% 0%, rgba(14, 165, 233, .55), transparent 60%),
+    radial-gradient(50% 70% at 100% 100%, rgba(16, 185, 129, .45), transparent 60%),
+    linear-gradient(135deg, #1e3a8a, #1d4ed8);
+}
+.tv-btn-shine { position: relative; overflow: hidden; }
+.tv-btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .6) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: tv-shine 4.5s ease-in-out infinite;
+}
+@keyframes tv-shine {
+  0%, 60% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Reveal sections as they scroll into view (no JS: scroll-driven where
+   supported, plain visible everywhere else). */
+@supports (animation-timeline: view()) {
+  .tv-reveal {
+    animation: tv-reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 25%;
+  }
+  @keyframes tv-reveal {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-ink, .tv-cloud, .tv-contrail, .tv-float, .tv-runner, .tv-chip, .tv-ping::after,
+  .tv-marquee-track, .tv-match-l, .tv-match-r, .tv-match-badge, .tv-match-mail,
+  .tv-glow-card::before, .tv-glow-card::after, .tv-btn-shine::after, .tv-reveal {
+    animation: none !important;
+  }
+  .tv-contrail, .tv-runner { display: none; }
+  .tv-match-badge { transform: translate(-50%, -50%); }
+  /* Loops collapse to their first frame: first trip, first toast, all bubbles. */
+  .tv-rot, .tv-toast { animation: none !important; opacity: 0; }
+  .tv-rot[data-first], .tv-toast[data-first] { opacity: 1; transform: none; }
+  .tv-bubble { animation: none !important; opacity: 1; }
+}
