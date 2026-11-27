@@ -1,7 +1,6 @@
 "use client";
 
 import { BadgeCheck, CreditCard, Gift, HandHeart, Info, ThumbsDown, ThumbsUp } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { acceptHelper, answerOutcome, errorMessage, getConversation, getCredits, getPaymentsConfig, setRewardDeclined } from "@/lib/api";
 import { dateTime } from "@/lib/format";
@@ -297,24 +296,3 @@ export function CreditPanel() {
   );
 }
 
-/** Landing-page FAQ entry; renders nothing while payments are off. */
-export function PaidHelpFaq() {
-  const config = usePaymentsConfig();
-  if (!config?.enabled) return null;
-  return (
-    <section className="-mt-10 mb-16 rounded-2xl border border-line bg-white/85 p-6 text-sm text-fg-muted shadow-sm">
-      <h2 className="font-semibold text-fg">Is it free?</h2>
-      <p className="mt-1">
-        Posting and reaching out are free. A family pays {money(config.feeCents)} per trip only when they accept a helper, and the
-        helper gets {money(config.rewardCents)} TransitVault credit as a thank-you (or helps for free). Helpers are fellow
-        travellers, not hired escorts, and TransitVault doesn&apos;t provide assistance services. If a helper doesn&apos;t show,
-        the fee comes back as credit; contact us for a card refund.
-      </p>
-      <p className="mt-3">
-        <Link href="/faq" className="font-medium text-accent hover:underline">
-          More questions? Read the FAQ
-        </Link>
-      </p>
-    </section>
-  );
-}
